@@ -1,4 +1,4 @@
-"""Tests for app and module entrypoints."""
+"""Tests for __main__.py routing and app.launch() entrypoint."""
 
 import sys
 import types
@@ -6,113 +6,135 @@ import types
 from obscura.config import AppConfig
 
 
-def test_main_cli_only_env(monkeypatch):
-    import obscura.cli as cli
-    from obscura import __main__ as main_mod
+class TestMainRouting:
+    """Verify __main__.main() dispatches to CLI or app correctly."""
 
-    called = {"count": 0}
+    def test_cli_only_env_bypasses_app(self, monkeypatch):
+        import obscura.cli as cli
+        from obscura import __main__ as main_mod
 
-    def fake_main():
-        called["count"] += 1
+        invoked = []
+        monkeypatch.setattr(cli, "main", lambda: invoked.append("cli"))
+        monkeypatch.setenv("OBSCURA_CLI_ONLY", "1")
+        monkeypatch.setattr(sys, "argv", ["obscura"])
 
-    monkeypatch.setattr(cli, "main", fake_main)
-    monkeypatch.setenv("OBSCURA_CLI_ONLY", "1")
-    monkeypatch.setattr(sys, "argv", ["obscura"])
+        main_mod.main()
+        assert invoked == ["cli"]
 
-    main_mod.main()
-    assert called["count"] == 1
+    def test_args_invoke_cli(self, monkeypatch):
+        import obscura.cli as cli
+        from obscura import __main__ as main_mod
 
+        invoked = []
+        monkeypatch.setattr(cli, "main", lambda: invoked.append("cli"))
+        monkeypatch.delenv("OBSCURA_CLI_ONLY", raising=False)
+        monkeypatch.setattr(sys, "argv", ["obscura", "list"])
 
-def test_main_with_args_invokes_cli(monkeypatch):
-    import obscura.cli as cli
-    from obscura import __main__ as main_mod
+        main_mod.main()
+        assert invoked == ["cli"]
 
-    called = {"count": 0}
+    def test_no_args_launches_app(self, monkeypatch):
+        from obscura import __main__ as main_mod
 
-    def fake_main():
-        called["count"] += 1
+        invoked = []
 
-    monkeypatch.setattr(cli, "main", fake_main)
-    monkeypatch.delenv("OBSCURA_CLI_ONLY", raising=False)
-    monkeypatch.setattr(sys, "argv", ["obscura", "list"])
+        module = types.ModuleType("obscura.app")
+        module.launch = lambda: invoked.append("app")
+        monkeypatch.setitem(sys.modules, "obscura.app", module)
+        monkeypatch.delenv("OBSCURA_CLI_ONLY", raising=False)
+        monkeypatch.setattr(sys, "argv", ["obscura"])
 
-    main_mod.main()
-    assert called["count"] == 1
+        main_mod.main()
+        assert invoked == ["app"]
 
+    def test_missing_app_falls_back_to_cli(self, monkeypatch):
+        import obscura.cli as cli
+        from obscura import __main__ as main_mod
 
-def test_main_launches_app_when_available(monkeypatch):
-    from obscura import __main__ as main_mod
+        invoked = []
+        monkeypatch.setattr(cli, "main", lambda: invoked.append("cli"))
 
-    called = {"count": 0}
+        module = types.ModuleType("obscura.app")
+        monkeypatch.setitem(sys.modules, "obscura.app", module)
+        monkeypatch.delenv("OBSCURA_CLI_ONLY", raising=False)
+        monkeypatch.setattr(sys, "argv", ["obscura"])
 
-    def fake_launch():
-        called["count"] += 1
-
-    module = types.ModuleType("obscura.app")
-    module.launch = fake_launch
-    monkeypatch.setitem(sys.modules, "obscura.app", module)
-    monkeypatch.delenv("OBSCURA_CLI_ONLY", raising=False)
-    monkeypatch.setattr(sys, "argv", ["obscura"])
-
-    main_mod.main()
-    assert called["count"] == 1
-
-
-def test_main_falls_back_to_cli_on_import_error(monkeypatch):
-    import obscura.cli as cli
-    from obscura import __main__ as main_mod
-
-    called = {"count": 0}
-
-    def fake_cli():
-        called["count"] += 1
-
-    module = types.ModuleType("obscura.app")
-    # No launch attribute -> ImportError in `from obscura.app import launch`
-    monkeypatch.setitem(sys.modules, "obscura.app", module)
-    monkeypatch.setattr(cli, "main", fake_cli)
-    monkeypatch.delenv("OBSCURA_CLI_ONLY", raising=False)
-    monkeypatch.setattr(sys, "argv", ["obscura"])
-
-    main_mod.main()
-    assert called["count"] == 1
+        main_mod.main()
+        assert invoked == ["cli"]
 
 
-def test_app_launch(monkeypatch, tmp_dir):
-    calls = {}
+class TestAppLaunch:
+    """Verify app.launch() wires up webview correctly."""
 
-    class DummyWindow:
-        pass
+    def test_launch_creates_window_and_starts(self, monkeypatch, tmp_dir):
+        calls = {}
 
-    def create_window(title, url, js_api, width, height, min_size):
-        calls["title"] = title
-        calls["url"] = url
-        calls["js_api"] = js_api
-        calls["width"] = width
-        calls["height"] = height
-        calls["min_size"] = min_size
-        return DummyWindow()
+        class DummyWindow:
+            pass
 
-    def start():
-        calls["started"] = True
+        def create_window(title, url, js_api, width, height, min_size):
+            calls["title"] = title
+            calls["url"] = url
+            calls["js_api"] = js_api
+            calls["width"] = width
+            calls["height"] = height
+            calls["min_size"] = min_size
+            return DummyWindow()
 
-    dummy_webview = types.SimpleNamespace(create_window=create_window, start=start)
-    monkeypatch.setitem(sys.modules, "webview", dummy_webview)
+        def start():
+            calls["started"] = True
 
-    if "obscura.app" in sys.modules:
-        del sys.modules["obscura.app"]
+        dummy_webview = types.SimpleNamespace(create_window=create_window, start=start)
+        monkeypatch.setitem(sys.modules, "webview", dummy_webview)
 
-    import obscura.app as app
+        if "obscura.app" in sys.modules:
+            del sys.modules["obscura.app"]
 
-    project_root = tmp_dir / "Projects"
-    project_root.mkdir()
-    config = AppConfig(project_root=str(project_root), config_dir=tmp_dir)
+        import obscura.app as app
 
-    monkeypatch.setattr(app, "default_config_dir", lambda: tmp_dir)
-    monkeypatch.setattr(app, "load_config", lambda config_dir: config)
+        project_root = tmp_dir / "Projects"
+        project_root.mkdir()
+        config = AppConfig(project_root=str(project_root), config_dir=tmp_dir)
 
-    app.launch()
+        monkeypatch.setattr(app, "default_config_dir", lambda: tmp_dir)
+        monkeypatch.setattr(app, "load_config", lambda config_dir: config)
 
-    assert calls["title"] == "Obscura"
-    assert calls["started"] is True
-    assert "ui" in calls["url"]
+        app.launch()
+
+        assert calls["title"] == "Obscura"
+        assert calls["started"] is True
+        assert "ui" in calls["url"]
+
+    def test_launch_handles_missing_project_root(self, monkeypatch, tmp_dir):
+        """When config.project_root points to a nonexistent dir, launch still works."""
+        calls = {}
+
+        class DummyWindow:
+            pass
+
+        def create_window(title, url, js_api, width, height, min_size):
+            calls["js_api"] = js_api
+            return DummyWindow()
+
+        def start():
+            calls["started"] = True
+
+        dummy_webview = types.SimpleNamespace(create_window=create_window, start=start)
+        monkeypatch.setitem(sys.modules, "webview", dummy_webview)
+
+        if "obscura.app" in sys.modules:
+            del sys.modules["obscura.app"]
+
+        import obscura.app as app
+
+        config = AppConfig(
+            project_root=str(tmp_dir / "nonexistent"),
+            config_dir=tmp_dir,
+        )
+        monkeypatch.setattr(app, "default_config_dir", lambda: tmp_dir)
+        monkeypatch.setattr(app, "load_config", lambda config_dir: config)
+
+        app.launch()
+
+        assert calls["started"] is True
+        assert calls["js_api"]._root is None

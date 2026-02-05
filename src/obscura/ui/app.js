@@ -130,14 +130,21 @@
             if (tab.dataset.step === stepName) {
                 tab.classList.add("active");
                 tab.setAttribute("aria-selected", "true");
+                tab.setAttribute("tabindex", "0");
             } else {
                 tab.classList.remove("active");
                 tab.setAttribute("aria-selected", "false");
+                tab.setAttribute("tabindex", "-1");
             }
         });
         el.stepPanels.forEach(function (panel) {
             if (panel.id === "step-" + stepName) {
                 panel.classList.add("active");
+                var heading = panel.querySelector("h2");
+                if (heading) {
+                    heading.setAttribute("tabindex", "-1");
+                    heading.focus();
+                }
             } else {
                 panel.classList.remove("active");
             }
@@ -147,6 +154,30 @@
     el.stepTabs.forEach(function (tab) {
         tab.addEventListener("click", function () {
             showStep(tab.dataset.step);
+        });
+        tab.addEventListener("keydown", function (e) {
+            var currentIdx = stepOrder.indexOf(tab.dataset.step);
+            var nextIdx = -1;
+            if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+                e.preventDefault();
+                nextIdx = (currentIdx + 1) % stepOrder.length;
+            } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+                e.preventDefault();
+                nextIdx = (currentIdx - 1 + stepOrder.length) % stepOrder.length;
+            } else if (e.key === "Home") {
+                e.preventDefault();
+                nextIdx = 0;
+            } else if (e.key === "End") {
+                e.preventDefault();
+                nextIdx = stepOrder.length - 1;
+            }
+            if (nextIdx >= 0) {
+                var nextTab = document.querySelector('.step-tab[data-step="' + stepOrder[nextIdx] + '"]');
+                if (nextTab) {
+                    showStep(stepOrder[nextIdx]);
+                    nextTab.focus();
+                }
+            }
         });
     });
 
@@ -164,6 +195,19 @@
     }
 
     /* --- Helpers --- */
+
+    function resetWorkspaceState() {
+        if (el.keywordsEditor) el.keywordsEditor.value = "";
+        if (el.saveIndicator) { el.saveIndicator.textContent = ""; el.saveIndicator.className = "save-indicator"; }
+        if (el.keywordErrors) { el.keywordErrors.classList.add("hidden"); el.keywordErrors.innerHTML = ""; }
+        if (el.fileList) el.fileList.innerHTML = "";
+        if (el.fileCount) el.fileCount.textContent = "";
+        if (el.runSummary) el.runSummary.classList.add("hidden");
+        if (el.runProgress) el.runProgress.classList.add("hidden");
+        if (el.runBtn) el.runBtn.disabled = false;
+        if (el.workspaceTitle) el.workspaceTitle.textContent = "Project";
+        setProgress(0);
+    }
 
     function esc(str) {
         var d = document.createElement("div");
@@ -360,6 +404,7 @@
                 var card = document.createElement("button");
                 card.className = "project-card";
                 card.type = "button";
+                card.setAttribute("aria-label", "Open project: " + p.name);
                 card.innerHTML =
                     '<span class="card-title">' + esc(p.name) + "</span>" +
                     '<div class="meta">' +
@@ -393,6 +438,8 @@
                 }
                 currentProject = null;
                 currentReport = null;
+                currentFileName = null;
+                resetWorkspaceState();
                 showScreen("projects");
                 await loadProjects();
                 showToast("Project folder updated.", "success");
@@ -410,6 +457,7 @@
             closeModal();
             try {
                 await window.pywebview.api.create_project(name, language);
+                showToast("Project created.", "success");
                 await loadProjects();
             } catch (e) {
                 showToast("Failed to create project: " + (e.message || e), "error");
@@ -436,6 +484,8 @@
     el.backToProjects.addEventListener("click", function () {
         currentProject = null;
         currentReport = null;
+        currentFileName = null;
+        resetWorkspaceState();
         showScreen("projects");
         loadProjects();
     });
@@ -449,6 +499,7 @@
             await validateKeywords(text);
         } catch (_) {
             el.keywordsEditor.value = "";
+            showToast("Could not load keywords.", "error");
         }
     }
 
@@ -460,7 +511,7 @@
                 el.languageSelect.value = settings.language;
             }
         } catch (_) {
-            /* leave defaults */
+            showToast("Could not load project settings.", "error");
         }
     }
 
@@ -544,6 +595,7 @@
             currentReport = report;
         } catch (_) {
             currentReport = null;
+            showToast("Could not load previous report.", "error");
         }
     }
 
@@ -555,7 +607,8 @@
             renderFileList(data.files || []);
         } catch (_) {
             el.fileList.innerHTML =
-                '<p class="empty-state">Run redaction to see file results.</p>';
+                '<p class="empty-state">Could not load files.</p>';
+            showToast("Could not load file list.", "error");
         }
     }
 
@@ -572,6 +625,8 @@
             var row = document.createElement("button");
             row.className = "file-row";
             row.type = "button";
+            row.setAttribute("role", "listitem");
+            row.setAttribute("aria-label", f.file + ", status: " + statusLabel(f.status));
             var pill = '<span class="status-pill ' + esc(statusClass(f.status)) + '">' +
                        esc(statusLabel(f.status)) + "</span>";
             var redactionsText = "";
@@ -605,7 +660,16 @@
     el.addFilesBtn.addEventListener("click", async function () {
         if (!currentProject) return;
         try {
-            await window.pywebview.api.add_files(currentProject);
+            var result = await window.pywebview.api.add_files(currentProject);
+            var data = JSON.parse(result);
+            if (data.error) {
+                showToast("Failed to add files: " + data.error, "error");
+            } else if (data.added && data.added.length > 0) {
+                showToast(data.added.length + " file" + (data.added.length !== 1 ? "s" : "") + " added.", "success");
+            }
+            if (data.skipped && data.skipped.length > 0) {
+                showToast(data.skipped.length + " file" + (data.skipped.length !== 1 ? "s" : "") + " skipped (not PDF).", "error");
+            }
             await loadFiles();
         } catch (e) {
             showToast("Failed to add files.", "error");
@@ -628,10 +692,20 @@
         var files = Array.from(e.dataTransfer.files || []);
         var paths = files.map(function (f) { return f.path; }).filter(Boolean);
         try {
+            var result;
             if (paths.length > 0) {
-                await window.pywebview.api.add_files(currentProject, paths);
+                result = await window.pywebview.api.add_files(currentProject, paths);
             } else {
-                await window.pywebview.api.add_files(currentProject);
+                result = await window.pywebview.api.add_files(currentProject);
+            }
+            var data = JSON.parse(result);
+            if (data.error) {
+                showToast("Failed to add files: " + data.error, "error");
+            } else if (data.added && data.added.length > 0) {
+                showToast(data.added.length + " file" + (data.added.length !== 1 ? "s" : "") + " added.", "success");
+            }
+            if (data.skipped && data.skipped.length > 0) {
+                showToast(data.skipped.length + " file" + (data.skipped.length !== 1 ? "s" : "") + " skipped (not PDF).", "error");
             }
             await loadFiles();
         } catch (err) {
@@ -687,7 +761,11 @@
     el.openOutputBtn.addEventListener("click", async function () {
         if (!currentProject) return;
         try {
-            await window.pywebview.api.reveal_output_folder(currentProject);
+            var result = await window.pywebview.api.reveal_output_folder(currentProject);
+            var data = JSON.parse(result);
+            if (data.error) {
+                showToast("Could not open output folder: " + data.error, "error");
+            }
         } catch (e) {
             showToast("Could not open output folder.", "error");
         }
@@ -775,7 +853,11 @@
     el.openPreviewBtn.addEventListener("click", async function () {
         if (!currentProject || !currentFileName) return;
         try {
-            await window.pywebview.api.open_in_preview(currentProject, currentFileName);
+            var result = await window.pywebview.api.open_in_preview(currentProject, currentFileName);
+            var data = JSON.parse(result);
+            if (data.error) {
+                showToast("Could not open file: " + data.error, "error");
+            }
         } catch (e) {
             showToast("Could not open file.", "error");
         }
@@ -784,7 +866,11 @@
     el.revealFinderBtn.addEventListener("click", async function () {
         if (!currentProject || !currentFileName) return;
         try {
-            await window.pywebview.api.reveal_in_finder(currentProject, currentFileName);
+            var result = await window.pywebview.api.reveal_in_finder(currentProject, currentFileName);
+            var data = JSON.parse(result);
+            if (data.error) {
+                showToast("Could not reveal file: " + data.error, "error");
+            }
         } catch (e) {
             showToast("Could not reveal file.", "error");
         }

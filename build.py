@@ -7,15 +7,13 @@ import pathlib
 import subprocess
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "src"))
+from obscura.runtime import SYSTEM_TESSDATA_DIRS
+
 APP_NAME = "Obscura"
 ENTRYPOINT = pathlib.Path("src/obscura/__main__.py")
 UI_DIR = pathlib.Path("src/obscura/ui")
 DEFAULT_LANGUAGES = ("eng", "spa")
-SYSTEM_TESSDATA_DIRS = (
-    pathlib.Path("/opt/homebrew/share/tessdata"),
-    pathlib.Path("/usr/local/share/tessdata"),
-    pathlib.Path("/usr/share/tesseract-ocr/5/tessdata"),
-)
 
 
 def _die(message: str) -> None:

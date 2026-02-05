@@ -26,9 +26,33 @@ fi
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 APP_NAME="${APP_NAME:-Obscura}"
 OBSCURA_LANGUAGES="${OBSCURA_LANGUAGES:-eng+spa}"
+ENTITLEMENTS="${ROOT_DIR}/scripts/Obscura.entitlements"
 DIST_APP="dist/${APP_NAME}.app"
 RELEASE_DIR="release"
 ARCH="$(uname -m)"
+
+# -- Pre-flight checks -------------------------------------------------------
+
+if ! command -v "$PYTHON_BIN" &>/dev/null; then
+  echo "Error: PYTHON_BIN='${PYTHON_BIN}' not found or not executable." >&2
+  echo "Set PYTHON_BIN to a valid Python 3.12+ interpreter." >&2
+  exit 1
+fi
+
+for tool in hdiutil ditto codesign; do
+  if ! command -v "$tool" &>/dev/null; then
+    echo "Error: Required tool '${tool}' not found on PATH." >&2
+    exit 1
+  fi
+done
+
+if [[ ! -f "$ENTITLEMENTS" ]]; then
+  echo "Error: Entitlements file not found at ${ENTITLEMENTS}" >&2
+  exit 1
+fi
+
+# -- Resolve version ----------------------------------------------------------
+
 VERSION="$("$PYTHON_BIN" - <<'PY'
 import pathlib
 import re
@@ -60,6 +84,7 @@ if [[ -n "${OBSCURA_CODESIGN_IDENTITY:-}" ]]; then
     --deep \
     --options runtime \
     --timestamp \
+    --entitlements "$ENTITLEMENTS" \
     --sign "$OBSCURA_CODESIGN_IDENTITY" \
     "$DIST_APP"
   codesign --verify --deep --strict --verbose=2 "$DIST_APP"

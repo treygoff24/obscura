@@ -109,7 +109,7 @@ def sample_keywords_file(tmp_dir):
 **Step 6: Create virtual environment and install**
 
 ```bash
-cd /Users/treygoff/Code/obscura
+cd /path/to/obscura
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"

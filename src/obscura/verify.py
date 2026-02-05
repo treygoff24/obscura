@@ -118,16 +118,19 @@ def verify_pdf(
             if has_images:
                 try:
                     tp = page.get_textpage_ocr(language=language, full=True)
-                    text = page.get_text(textpage=tp)
-                    if text.strip():
-                        _check_ocr_confidence(
-                            page, tp, page_number, confidence_threshold,
-                            low_confidence_pages,
-                        )
-                    else:
-                        unreadable_pages.append(page_number)
-                        continue
                 except Exception:
+                    unreadable_pages.append(page_number)
+                    continue
+                if tp is None:
+                    unreadable_pages.append(page_number)
+                    continue
+                text = page.get_text(textpage=tp)
+                if text.strip():
+                    _check_ocr_confidence(
+                        page, tp, page_number, confidence_threshold,
+                        low_confidence_pages,
+                    )
+                else:
                     unreadable_pages.append(page_number)
                     continue
             else:
@@ -153,19 +156,23 @@ def verify_pdf(
             img_page = img_doc.new_page(width=pix.width, height=pix.height)
             img_page.insert_image(img_page.rect, pixmap=pix)
             try:
-                img_page.get_textpage_ocr(language=language, full=True)
-                ocr_text = img_page.get_text()
-                dv_matches = keywords.find_matches(ocr_text)
-                for m in dv_matches:
-                    entry = {
-                        "keyword": m.keyword,
-                        "page": page_number,
-                        "source": "deep_verify",
-                    }
-                    if entry not in residual_matches:
-                        residual_matches.append(entry)
+                dv_tp = img_page.get_textpage_ocr(language=language, full=True)
             except Exception:
-                pass
+                img_doc.close()
+                continue
+            if dv_tp is None:
+                img_doc.close()
+                continue
+            ocr_text = img_page.get_text()
+            dv_matches = keywords.find_matches(ocr_text)
+            for m in dv_matches:
+                entry = {
+                    "keyword": m.keyword,
+                    "page": page_number,
+                    "source": "deep_verify",
+                }
+                if entry not in residual_matches:
+                    residual_matches.append(entry)
             img_doc.close()
 
     doc.close()

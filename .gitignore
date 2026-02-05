@@ -28,5 +28,12 @@ reports/
 
 # Testing
 .coverage
+coverage.xml
 htmlcov/
 .pytest_cache/
+
+# AI tooling artifacts
+thoughts/
+
+# Bundled assets (binary, not for VCS)
+assets/tessdata/

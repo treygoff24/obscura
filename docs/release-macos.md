@@ -53,6 +53,26 @@ The script will:
 - staple notarization ticket
 - run Gatekeeper assessment
 
+## Gatekeeper Warning (Unsigned Builds)
+
+Unsigned builds trigger macOS Gatekeeper. Users will see a dialog saying the app
+"can't be opened because Apple cannot check it for malicious software."
+
+**First launch workaround (pick one):**
+
+1. **Right-click > Open** -- In Finder, right-click `Obscura.app` and choose
+   "Open". Click "Open" in the confirmation dialog. macOS remembers this choice
+   for future launches.
+2. **Terminal** -- Remove the quarantine attribute:
+   ```bash
+   xattr -cr /Applications/Obscura.app
+   ```
+
+Once either method is used, subsequent launches work normally via double-click.
+
+To eliminate the warning entirely, build with code signing and notarization
+(see "Build Signed + Notarized Artifacts" above).
+
 ## Publish
 
 1. Create a GitHub Release.

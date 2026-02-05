@@ -47,7 +47,7 @@
             </div>
         </header>
         <main id="project-list">
-            <div id="project-list-body">
+            <div id="project-list-body" role="region" aria-label="Project list">
                 <p class="empty-state">Loading projects...</p>
             </div>
         </main>
@@ -56,18 +56,18 @@
     <!-- Screen 3: Workspace -->
     <div id="screen-workspace" class="screen">
         <header>
-            <button id="back-to-projects" class="btn-back"><span aria-hidden="true">&larr;</span> Back</button>
+            <button id="back-to-projects" class="btn-back" aria-label="Back to project list"><span aria-hidden="true">&larr;</span> Back</button>
             <h1 id="workspace-title">Project</h1>
         </header>
 
         <nav class="stepper" role="tablist">
-            <button id="tab-keywords" class="step-tab active" data-step="keywords" role="tab" aria-selected="true" aria-controls="step-keywords">
+            <button id="tab-keywords" class="step-tab active" data-step="keywords" role="tab" aria-selected="true" aria-controls="step-keywords" tabindex="0">
                 <span class="step-number" aria-hidden="true">1</span> Words to redact
             </button>
-            <button id="tab-files" class="step-tab" data-step="files" role="tab" aria-selected="false" aria-controls="step-files">
+            <button id="tab-files" class="step-tab" data-step="files" role="tab" aria-selected="false" aria-controls="step-files" tabindex="-1">
                 <span class="step-number" aria-hidden="true">2</span> Your documents
             </button>
-            <button id="tab-run" class="step-tab" data-step="run" role="tab" aria-selected="false" aria-controls="step-run">
+            <button id="tab-run" class="step-tab" data-step="run" role="tab" aria-selected="false" aria-controls="step-run" tabindex="-1">
                 <span class="step-number" aria-hidden="true">3</span> Redact
             </button>
         </nav>
@@ -103,7 +103,7 @@
                     <p class="drop-text">Drag and drop PDFs here</p>
                     <button id="add-files-btn" class="btn-secondary">Browse files</button>
                 </div>
-                <div id="file-list"></div>
+                <div id="file-list" role="list" aria-label="Uploaded documents"></div>
                 <span id="file-count" class="file-count"></span>
                 <div class="step-nav">
                     <button id="step-prev-keywords" class="btn-secondary btn-prev"><span aria-hidden="true">&larr;</span> Words</button>
@@ -178,7 +178,7 @@
     <!-- Screen 4: Report Detail -->
     <div id="screen-report" class="screen">
         <header>
-            <button id="back-to-workspace" class="btn-back"><span aria-hidden="true">&larr;</span> Back</button>
+            <button id="back-to-workspace" class="btn-back" aria-label="Back to workspace"><span aria-hidden="true">&larr;</span> Back</button>
             <h1 id="report-title">File Report</h1>
         </header>
         <main class="report-body">

@@ -1,13 +1,18 @@
 """Allow running as `python -m obscura`."""
 
+import logging
 import os
 import sys
 
 from obscura.runtime import configure_ocr_runtime
 
+logger = logging.getLogger(__name__)
+
 
 def main():
-    configure_ocr_runtime()
+    tessdata_dir = configure_ocr_runtime()
+    if tessdata_dir is None:
+        logger.warning("No tessdata directory found; OCR will be unavailable")
 
     if len(sys.argv) > 1 or os.environ.get("OBSCURA_CLI_ONLY") == "1":
         from obscura.cli import main as cli_main

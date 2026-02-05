@@ -24,6 +24,33 @@ languages=${2:-"eng+spa"}
 
 IFS='+' read -r -a lang_array <<<"$languages"
 
+# -- Pre-flight: validate output directory ------------------------------------
+
+out_parent="$(dirname "$out_dir")"
+if [[ ! -d "$out_parent" ]]; then
+  echo "Error: Parent directory '${out_parent}' does not exist." >&2
+  exit 1
+fi
+if [[ -d "$out_dir" && ! -w "$out_dir" ]]; then
+  echo "Error: Output directory '${out_dir}' is not writable." >&2
+  exit 1
+fi
+if [[ ! -d "$out_dir" && ! -w "$out_parent" ]]; then
+  echo "Error: Cannot create '${out_dir}' — parent directory is not writable." >&2
+  exit 1
+fi
+
+# -- Cleanup trap: remove partial output on failure ---------------------------
+
+_created_out_dir=0
+cleanup() {
+  if [[ "$_created_out_dir" -eq 1 && -d "$out_dir" ]]; then
+    echo "Cleaning up partial output in '${out_dir}' ..." >&2
+    rm -f "$out_dir"/*.traineddata 2>/dev/null || true
+  fi
+}
+trap cleanup ERR
+
 find_tessdata() {
   local candidates=(
     "assets/tessdata"
@@ -53,9 +80,13 @@ if [[ -z "${tessdata}" ]]; then
   exit 1
 fi
 
-mkdir -p "$out_dir"
+if [[ ! -d "$out_dir" ]]; then
+  mkdir -p "$out_dir"
+  _created_out_dir=1
+fi
 for lang in "${lang_array[@]}"; do
   cp "$tessdata/${lang}.traineddata" "$out_dir/"
 done
+trap - ERR
 
 echo "Bundled tessdata languages (${languages}) to: $out_dir"

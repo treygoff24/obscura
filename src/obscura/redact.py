@@ -236,12 +236,15 @@ def redact_pdf(
         if not text.strip():
             try:
                 textpage = page.get_textpage_ocr(language=language, full=True)
-                text = page.get_text(textpage=textpage)
-                if text.strip():
-                    ocr_used = True
             except Exception:
                 logger.warning("OCR failed on page %d of %s", page_num + 1, input_path.name)
                 continue
+            if textpage is None:
+                logger.warning("OCR returned None on page %d of %s", page_num + 1, input_path.name)
+                continue
+            text = page.get_text(textpage=textpage)
+            if text.strip():
+                ocr_used = True
 
         hits, misses = _search_keywords_on_page(page, keywords, textpage=textpage)
         all_missed.extend(misses)

@@ -116,3 +116,55 @@ def test_run_prints_summary(tmp_dir, capsys, monkeypatch):
     assert "Files needing review: 1" in out
     assert "Files with errors: 1" in out
     assert "Report: report.json" in out
+
+
+def test_run_clean_summary_hides_zero_counts(tmp_dir, capsys, monkeypatch):
+    """When review/error counts are zero, those lines are omitted."""
+    project = create_project(tmp_dir, "Matter A")
+    summary = RunSummary(
+        files_processed=3,
+        total_redactions=10,
+        files_needing_review=0,
+        files_errored=0,
+        report_path=pathlib.Path("report.json"),
+    )
+
+    monkeypatch.setattr(cli, "run_project", lambda *_args, **_kwargs: summary)
+
+    cli.main(["run", str(project.path)])
+    out = capsys.readouterr().out
+    assert "Processed 3 file(s)." in out
+    assert "Total redactions: 10" in out
+    assert "Files needing review" not in out
+    assert "Files with errors" not in out
+
+
+def test_report_default_shows_latest(tmp_dir, capsys):
+    """Report without --last or --list defaults to showing the latest report."""
+    project = create_project(tmp_dir, "Matter A")
+    _create_report(project, name="2026-01-01.json", payload={"schema_version": 1, "files": []})
+    _create_report(project, name="2026-01-02.json", payload={"schema_version": 1, "files": [{"file": "latest.pdf"}]})
+
+    cli.main(["report", str(project.path)])
+    out = capsys.readouterr().out
+    assert "latest.pdf" in out
+
+
+def test_create_with_language_and_threshold(tmp_dir, capsys):
+    cli.main([
+        "create", "--root", str(tmp_dir),
+        "--name", "Spanish Matter",
+        "--language", "spa",
+        "--threshold", "80",
+    ])
+    data = json.loads((tmp_dir / "Spanish Matter" / "project.json").read_text())
+    assert data["language"] == "spa"
+    assert data["confidence_threshold"] == 80
+
+
+def test_create_duplicate_name_exits(tmp_dir, capsys):
+    create_project(tmp_dir, "Existing")
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["create", "--root", str(tmp_dir), "--name", "Existing"])
+    assert exc.value.code == 1
+    assert "Error:" in capsys.readouterr().err
