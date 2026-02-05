@@ -1,7 +1,9 @@
-"""Playwright UI tests for the Obscura three-screen SPA.
+"""Playwright UI tests for the Obscura four-screen SPA.
 
 Tests the actual JS/DOM behavior via a local HTTP server with a mock
 pywebview API bridge injected before each test.
+
+Screens: Welcome -> Project List -> Workspace (stepper: Keywords/Files/Run) -> Report
 """
 
 from __future__ import annotations
@@ -13,23 +15,29 @@ pytestmark = pytest.mark.ui
 
 
 # =========================================================================== #
-# Screen 1 — Project List
+# Screen 1 — Welcome / Screen 2 — Project List
 # =========================================================================== #
 
 
-def test_shows_root_prompt_when_no_root(ui_server, page):
-    """When list_projects returns needs_root, the root prompt is visible."""
+def test_shows_welcome_screen_when_no_root(ui_server, page):
+    """When list_projects returns needs_root, the welcome screen is shown."""
     mock = build_mock_js(
         list_projects='() => Promise.resolve(JSON.stringify({needs_root: true, projects: []}))',
         fire_event=False,
     )
     page.add_init_script(mock)
     page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    # Skip welcome to projects, then fire event so loadProjects runs and
+    # detects needs_root, which navigates back to welcome
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
     page.evaluate(FIRE_EVENT_JS)
-    prompt = page.locator("#root-prompt")
-    prompt.wait_for(state="visible", timeout=5000)
-    assert prompt.is_visible()
-    assert "Select a Project Folder" in prompt.locator("h2").text_content()
+    welcome = page.locator("#screen-welcome")
+    welcome.wait_for(state="visible", timeout=5000)
+    assert welcome.is_visible()
+    assert page.locator("#get-started-btn").is_visible()
 
 
 def test_shows_project_cards(ui_page):
@@ -37,12 +45,13 @@ def test_shows_project_cards(ui_page):
     cards = ui_page.locator(".project-card")
     cards.first.wait_for(state="visible", timeout=3000)
     assert cards.count() == 2
-    assert "Matter A" in cards.nth(0).locator("h3").text_content()
-    assert "Matter B" in cards.nth(1).locator("h3").text_content()
+    assert "Matter A" in cards.nth(0).locator("h2").text_content()
+    assert "Matter B" in cards.nth(1).locator("h2").text_content()
+    assert cards.nth(0).evaluate("el => el.tagName") == "BUTTON"
 
 
 def test_new_project_calls_api(ui_server, page):
-    """Clicking New Project with prompt override calls create_project."""
+    """Clicking New Project opens modal; filling and submitting calls create_project."""
     mock = build_mock_js(fire_event=False) + """
     window._createCalled = false;
     window.pywebview.api.create_project = function() {
@@ -52,26 +61,28 @@ def test_new_project_calls_api(ui_server, page):
     """
     page.add_init_script(mock)
     page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    # Bypass welcome screen
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
     page.evaluate(FIRE_EVENT_JS)
     page.wait_for_selector(".project-card", timeout=3000)
 
-    # Override both prompts used by the New Project handler
-    page.evaluate("""
-        var _promptCount = 0;
-        window.prompt = function(msg, def_) {
-            _promptCount++;
-            if (_promptCount === 1) return 'Test Project';
-            return def_ || 'eng';
-        };
-    """)
+    # Click New Project to open modal
     page.click("#new-project-btn")
+    page.wait_for_selector("#modal-new-project:not(.hidden)", timeout=3000)
+
+    # Fill in the modal form
+    page.fill("#modal-project-name", "Test Project")
+    page.click("#modal-create-btn")
 
     page.wait_for_function("window._createCalled === true", timeout=3000)
     assert page.evaluate("window._createCalled") is True
 
 
 # =========================================================================== #
-# Screen 2 — Workspace
+# Screen 3 — Workspace (Stepper: Keywords / Files / Run)
 # =========================================================================== #
 
 
@@ -82,6 +93,22 @@ def test_navigates_to_workspace_on_card_click(ui_page):
     workspace.wait_for(state="visible", timeout=3000)
     assert workspace.is_visible()
     assert "Matter A" in ui_page.locator("#workspace-title").text_content()
+
+
+def test_no_external_fonts(ui_page):
+    """UI should not load external fonts."""
+    assert ui_page.evaluate("""
+        () => document.querySelector('link[href*="fonts.googleapis.com"]') === null
+    """)
+
+
+def test_keywords_editor_has_label(ui_page):
+    """Keywords editor should have a programmatic label."""
+    ui_page.locator(".project-card").first.click()
+    ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    assert ui_page.evaluate("""
+        () => document.querySelector('label[for="keywords-editor"]') !== null
+    """)
 
 
 def test_keywords_editor_loads_content(ui_page):
@@ -112,6 +139,10 @@ def test_keyword_validation_shows_errors(ui_server, page):
     )
     page.add_init_script(mock)
     page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
     page.evaluate(FIRE_EVENT_JS)
     page.wait_for_selector(".project-card", timeout=3000)
     page.locator(".project-card").first.click()
@@ -167,6 +198,10 @@ def test_file_list_renders_with_status(ui_page):
     ui_page.locator(".project-card").first.click()
     ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
 
+    # Navigate to the files step
+    ui_page.click("[data-step='files']")
+    ui_page.wait_for_selector("#step-files.active", timeout=3000)
+
     rows = ui_page.locator(".file-row")
     rows.first.wait_for(state="visible", timeout=3000)
     assert rows.count() == 2
@@ -176,12 +211,17 @@ def test_file_list_renders_with_status(ui_page):
 
     pills = ui_page.locator(".file-row .status-pill")
     assert pills.count() >= 2
+    assert rows.nth(0).evaluate("el => el.tagName") == "BUTTON"
 
 
 def test_run_button_disables_during_run(ui_page):
-    """Run button disables and spinner shows while running."""
+    """Run button disables and progress bar shows while running."""
     ui_page.locator(".project-card").first.click()
     ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+
+    # Navigate to the run step
+    ui_page.click("[data-step='run']")
+    ui_page.wait_for_selector("#step-run.active", timeout=3000)
 
     # Make run_project slow so we can catch the disabled state
     ui_page.evaluate("""
@@ -205,7 +245,7 @@ def test_run_button_disables_during_run(ui_page):
         timeout=3000,
     )
     ui_page.wait_for_function(
-        "!document.getElementById('run-spinner').classList.contains('hidden')",
+        "!document.getElementById('run-progress').classList.contains('hidden')",
         timeout=3000,
     )
 
@@ -218,25 +258,44 @@ def test_run_button_disables_during_run(ui_page):
 
 
 def test_language_selector_updates(ui_page):
-    """Changing language dropdown updates the workspace language badge."""
+    """Changing language dropdown calls update_project_settings."""
     ui_page.locator(".project-card").first.click()
     ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
 
-    # The mock update_project_settings returns the language we send
+    # Navigate to the run step where settings live
+    ui_page.click("[data-step='run']")
+    ui_page.wait_for_selector("#step-run.active", timeout=3000)
+
+    # Open the Settings details panel
+    ui_page.locator("#step-run details.advanced-section summary").click()
+
+    # Track update_project_settings calls
+    ui_page.evaluate("""
+        window._settingsUpdated = false;
+        var _origUpdate = window.pywebview.api.update_project_settings;
+        window.pywebview.api.update_project_settings = function(name, lang, thresh) {
+            window._settingsUpdated = lang;
+            return _origUpdate(name, lang, thresh);
+        };
+    """)
+
     ui_page.locator("#language-select").select_option("spa")
 
-    # The change handler calls update_project_settings then updates the badge
-    ui_page.wait_for_function(
-        "document.getElementById('workspace-language').textContent === 'spa'",
-        timeout=3000,
-    )
-    assert ui_page.locator("#workspace-language").text_content() == "spa"
+    ui_page.wait_for_function("window._settingsUpdated === 'spa'", timeout=3000)
+    assert ui_page.evaluate("window._settingsUpdated") == "spa"
 
 
 def test_deep_verify_toggle_shows_dpi(ui_page):
     """Checking deep verify checkbox reveals the DPI row."""
     ui_page.locator(".project-card").first.click()
     ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+
+    # Navigate to the run step where settings live
+    ui_page.click("[data-step='run']")
+    ui_page.wait_for_selector("#step-run.active", timeout=3000)
+
+    # Open the Settings details panel
+    ui_page.locator("#step-run details.advanced-section summary").click()
 
     dpi_row = ui_page.locator("#dpi-row")
     assert dpi_row.evaluate("el => el.classList.contains('hidden')")
@@ -246,7 +305,7 @@ def test_deep_verify_toggle_shows_dpi(ui_page):
 
 
 # =========================================================================== #
-# Screen 3 — Report Detail
+# Screen 4 — Report Detail
 # =========================================================================== #
 
 
@@ -254,6 +313,10 @@ def test_file_click_opens_report(ui_page):
     """Clicking a file row opens the report detail screen."""
     ui_page.locator(".project-card").first.click()
     ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+
+    # Navigate to the files step
+    ui_page.click("[data-step='files']")
+    ui_page.wait_for_selector("#step-files.active", timeout=3000)
 
     rows = ui_page.locator(".file-row")
     rows.first.wait_for(state="visible", timeout=3000)
@@ -265,10 +328,34 @@ def test_file_click_opens_report(ui_page):
     assert "memo.pdf" in ui_page.locator("#report-title").text_content()
 
 
+def test_project_card_keyboard_activation(ui_page):
+    """Enter on a focused project card opens the workspace."""
+    card = ui_page.locator(".project-card").first
+    card.focus()
+    ui_page.keyboard.press("Enter")
+    ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    assert ui_page.locator("#screen-workspace").is_visible()
+
+
+def test_file_row_keyboard_activation(ui_page):
+    """Enter on a focused file row opens the report screen."""
+    ui_page.locator(".project-card").first.click()
+    ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    ui_page.click("[data-step='files']")
+    ui_page.wait_for_selector("#step-files.active", timeout=3000)
+    row = ui_page.locator(".file-row").first
+    row.focus()
+    ui_page.keyboard.press("Enter")
+    ui_page.wait_for_selector("#screen-report.active", timeout=3000)
+    assert ui_page.locator("#screen-report").is_visible()
+
+
 def test_residual_matches_table(ui_page):
     """Report detail shows residual matches in table rows."""
     ui_page.locator(".project-card").first.click()
     ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    ui_page.click("[data-step='files']")
+    ui_page.wait_for_selector("#step-files.active", timeout=3000)
     rows = ui_page.locator(".file-row")
     rows.first.wait_for(state="visible", timeout=3000)
     rows.nth(1).click()  # memo.pdf
@@ -286,6 +373,8 @@ def test_report_shows_low_confidence_and_unreadable(ui_page):
     """Report detail shows low confidence and unreadable page badges."""
     ui_page.locator(".project-card").first.click()
     ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    ui_page.click("[data-step='files']")
+    ui_page.wait_for_selector("#step-files.active", timeout=3000)
     rows = ui_page.locator(".file-row")
     rows.first.wait_for(state="visible", timeout=3000)
     rows.nth(1).click()  # memo.pdf
@@ -304,6 +393,8 @@ def test_back_to_workspace(ui_page):
     """Back button from report returns to workspace."""
     ui_page.locator(".project-card").first.click()
     ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    ui_page.click("[data-step='files']")
+    ui_page.wait_for_selector("#step-files.active", timeout=3000)
     ui_page.locator(".file-row").first.wait_for(state="visible", timeout=3000)
     ui_page.locator(".file-row").first.click()
     ui_page.wait_for_selector("#screen-report.active", timeout=3000)
@@ -338,6 +429,10 @@ def test_empty_project_list(ui_server, page):
     )
     page.add_init_script(mock)
     page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
     page.evaluate(FIRE_EVENT_JS)
 
     empty = page.locator("#project-list-body .empty-state")
@@ -345,22 +440,20 @@ def test_empty_project_list(ui_server, page):
     assert "No projects yet" in empty.text_content()
 
 
-def test_select_root_error_alert(ui_server, page):
-    """Select root failure shows an alert."""
+def test_get_started_continues_on_root_error(ui_server, page):
+    """Get Started click proceeds to projects even if select_project_root fails."""
     mock = build_mock_js(
-        list_projects='() => Promise.resolve(JSON.stringify({needs_root: true, projects: []}))',
+        list_projects='() => Promise.resolve(JSON.stringify({needs_root: false, projects: []}))',
         select_project_root='() => Promise.reject(new Error("nope"))',
         fire_event=False,
     )
     page.add_init_script(mock)
     page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
-    page.evaluate(FIRE_EVENT_JS)
-
-    messages = []
-    page.on("dialog", lambda d: (messages.append(d.message), d.dismiss()))
-    page.click("#select-root-btn")
-    page.wait_for_function("true", timeout=1000)  # yield for dialog handler
-    assert any("Failed to select project folder" in m for m in messages)
+    # Welcome screen is active by default; click Get Started
+    page.click("#get-started-btn")
+    projects = page.locator("#screen-projects")
+    projects.wait_for(state="visible", timeout=5000)
+    assert projects.is_visible()
 
 
 def test_create_project_error_alert(ui_server, page):
@@ -371,23 +464,157 @@ def test_create_project_error_alert(ui_server, page):
     )
     page.add_init_script(mock)
     page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
     page.evaluate(FIRE_EVENT_JS)
     page.wait_for_selector(".project-card", timeout=3000)
 
+    messages = []
+    page.on("dialog", lambda d: (messages.append(d.message), d.dismiss()))
+
+    # Open modal, fill name, click Create
+    page.click("#new-project-btn")
+    page.wait_for_selector("#modal-new-project:not(.hidden)", timeout=3000)
+    page.fill("#modal-project-name", "Bad Project")
+    page.click("#modal-create-btn")
+    page.wait_for_function("true", timeout=2000)
+    assert any("Failed to create project" in m for m in messages)
+
+
+def test_modal_focus_trap_and_escape(ui_server, page):
+    """Modal traps focus and closes on Escape."""
+    mock = build_mock_js(fire_event=False)
+    page.add_init_script(mock)
+    page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
     page.evaluate("""
-        var _promptCount = 0;
-        window.prompt = function(msg, def_) {
-            _promptCount++;
-            if (_promptCount === 1) return 'Bad Project';
-            return def_ || 'eng';
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
+    page.evaluate(FIRE_EVENT_JS)
+    page.wait_for_selector(".project-card", timeout=3000)
+
+    page.click("#new-project-btn")
+    page.wait_for_selector("#modal-new-project:not(.hidden)", timeout=3000)
+    assert page.locator("#modal-overlay").get_attribute("aria-hidden") == "false"
+    assert page.locator("#modal-new-project").get_attribute("role") == "dialog"
+    assert page.locator("#modal-new-project").get_attribute("aria-modal") == "true"
+
+    # Focus should start on the name input.
+    assert page.evaluate("document.activeElement.id") == "modal-project-name"
+
+    # Shift+Tab from first element should wrap to last element.
+    page.keyboard.press("Shift+Tab")
+    page.wait_for_function("document.activeElement.id === 'modal-create-btn'", timeout=2000)
+    assert page.evaluate("document.activeElement.id") == "modal-create-btn"
+
+    # Escape closes modal.
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#modal-new-project.hidden", timeout=3000)
+    page.wait_for_function(
+        "document.getElementById('modal-overlay').getAttribute('aria-hidden') === 'true'",
+        timeout=2000,
+    )
+    assert page.locator("#modal-overlay").get_attribute("aria-hidden") == "true"
+
+
+def test_toast_exit_class_applied(ui_page):
+    """Toast receives exit class before removal."""
+    ui_page.locator(".project-card").first.click()
+    ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    ui_page.click("[data-step='run']")
+    ui_page.wait_for_selector("#step-run.active", timeout=3000)
+
+    ui_page.evaluate("""
+        window.pywebview.api.run_project = (name, deep, dpi) => {
+            return Promise.resolve(JSON.stringify({
+                files_processed: 1, total_redactions: 0,
+                files_needing_review: 0, report_path: null
+            }));
         };
     """)
 
-    messages = []
-    page.on("dialog", lambda d: (messages.append(d.message), d.dismiss()))
-    page.click("#new-project-btn")
-    page.wait_for_function("true", timeout=1000)
-    assert any("Failed to create project" in m for m in messages)
+    ui_page.locator("#run-btn").click()
+    toast = ui_page.locator(".toast")
+    toast.wait_for(state="visible", timeout=2000)
+    ui_page.wait_for_timeout(3050)
+    assert toast.evaluate("el => el.classList.contains('toast-exit')")
+
+
+def test_toast_container_aria_live(ui_page):
+    """Toast container should announce updates."""
+    assert ui_page.evaluate("""
+        () => {
+            const el = document.getElementById('toast-container');
+            return el && el.getAttribute('role') === 'status' && el.getAttribute('aria-live') === 'polite';
+        }
+    """)
+
+
+def test_drop_icon_is_aria_hidden(ui_page):
+    """Decorative drop icon should be aria-hidden."""
+    ui_page.locator(".project-card").first.click()
+    ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    ui_page.click("[data-step='files']")
+    ui_page.wait_for_selector("#step-files.active", timeout=3000)
+    assert ui_page.evaluate("""
+        () => document.querySelector('.drop-illustration span').getAttribute('aria-hidden') === 'true'
+    """)
+
+
+def test_reduced_motion_disables_spinner_animation(ui_page):
+    """Reduced motion should disable spinner animation."""
+    ui_page.emulate_media(reduced_motion="reduce")
+    ui_page.evaluate("""
+        const ring = document.createElement('div');
+        ring.className = 'spinner-ring';
+        document.body.appendChild(ring);
+    """)
+    assert ui_page.evaluate("""
+        () => getComputedStyle(document.querySelector('.spinner-ring')).animationName === 'none'
+    """)
+
+
+def test_reduced_motion_disables_toast_animation(ui_page):
+    """Reduced motion should disable toast animation."""
+    ui_page.emulate_media(reduced_motion="reduce")
+    ui_page.evaluate("""
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        document.body.appendChild(toast);
+    """)
+    assert ui_page.evaluate("""
+        () => getComputedStyle(document.querySelector('.toast')).animationName === 'none'
+    """)
+
+
+def test_progress_bar_uses_transform(ui_page):
+    """Progress bar updates via transform scaleX."""
+    ui_page.locator(".project-card").first.click()
+    ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    ui_page.click("[data-step='run']")
+    ui_page.wait_for_selector("#step-run.active", timeout=3000)
+
+    ui_page.evaluate("""
+        window.pywebview.api.run_project = (name, deep, dpi) => {
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    resolve(JSON.stringify({
+                        files_processed: 1, total_redactions: 0,
+                        files_needing_review: 0, report_path: null
+                    }));
+                }, 200);
+            });
+        };
+    """)
+
+    ui_page.locator("#run-btn").click()
+    ui_page.wait_for_function(
+        "document.getElementById('progress-fill').style.transform.includes('scaleX(')",
+        timeout=3000,
+    )
+    assert "scaleX(" in ui_page.locator("#progress-fill").evaluate("el => el.style.transform")
 
 
 def test_save_keywords_error_indicator(ui_server, page):
@@ -398,6 +625,10 @@ def test_save_keywords_error_indicator(ui_server, page):
     )
     page.add_init_script(mock)
     page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
     page.evaluate(FIRE_EVENT_JS)
     page.wait_for_selector(".project-card", timeout=3000)
     page.locator(".project-card").first.click()
@@ -421,15 +652,23 @@ def test_run_project_error_alert(ui_server, page):
     )
     page.add_init_script(mock)
     page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
     page.evaluate(FIRE_EVENT_JS)
     page.wait_for_selector(".project-card", timeout=3000)
     page.locator(".project-card").first.click()
     page.wait_for_selector("#screen-workspace.active", timeout=3000)
 
+    # Navigate to the run step
+    page.click("[data-step='run']")
+    page.wait_for_selector("#step-run.active", timeout=3000)
+
     messages = []
     page.on("dialog", lambda d: (messages.append(d.message), d.dismiss()))
     page.click("#run-btn")
-    page.wait_for_function("true", timeout=1000)
+    page.wait_for_function("true", timeout=2000)
     assert any("Run failed" in m for m in messages)
 
 
@@ -441,15 +680,23 @@ def test_add_files_error_alert(ui_server, page):
     )
     page.add_init_script(mock)
     page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
     page.evaluate(FIRE_EVENT_JS)
     page.wait_for_selector(".project-card", timeout=3000)
     page.locator(".project-card").first.click()
     page.wait_for_selector("#screen-workspace.active", timeout=3000)
 
+    # Navigate to the files step
+    page.click("[data-step='files']")
+    page.wait_for_selector("#step-files.active", timeout=3000)
+
     messages = []
     page.on("dialog", lambda d: (messages.append(d.message), d.dismiss()))
     page.click("#add-files-btn")
-    page.wait_for_function("true", timeout=1000)
+    page.wait_for_function("true", timeout=2000)
     assert any("Failed to add files" in m for m in messages)
 
 
@@ -461,12 +708,20 @@ def test_no_files_empty_state(ui_server, page):
     )
     page.add_init_script(mock)
     page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
     page.evaluate(FIRE_EVENT_JS)
     page.wait_for_selector(".project-card", timeout=3000)
     page.locator(".project-card").first.click()
     page.wait_for_selector("#screen-workspace.active", timeout=3000)
 
-    empty = page.locator(".empty-state")
+    # Navigate to the files step
+    page.click("[data-step='files']")
+    page.wait_for_selector("#step-files.active", timeout=3000)
+
+    empty = page.locator("#file-list .empty-state")
     empty.wait_for(state="visible", timeout=3000)
     assert "No input files yet" in empty.text_content()
 
@@ -490,10 +745,16 @@ def test_report_sections_hidden_when_clean(ui_server, page):
     )
     page.add_init_script(mock)
     page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
     page.evaluate(FIRE_EVENT_JS)
     page.wait_for_selector(".project-card", timeout=3000)
     page.locator(".project-card").first.click()
     page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    page.click("[data-step='files']")
+    page.wait_for_selector("#step-files.active", timeout=3000)
     page.locator(".file-row").first.click()
     page.wait_for_selector("#screen-report.active", timeout=3000)
 
@@ -507,6 +768,8 @@ def test_report_metadata_values(ui_page):
     """Metadata panel shows expected values."""
     ui_page.locator(".project-card").first.click()
     ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    ui_page.click("[data-step='files']")
+    ui_page.wait_for_selector("#step-files.active", timeout=3000)
     ui_page.locator(".file-row").nth(1).click()  # memo.pdf
     ui_page.wait_for_selector("#screen-report.active", timeout=3000)
 
@@ -526,15 +789,21 @@ def test_file_report_fallback_when_missing_report(ui_server, page):
     )
     page.add_init_script(mock)
     page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
     page.evaluate(FIRE_EVENT_JS)
     page.wait_for_selector(".project-card", timeout=3000)
     page.locator(".project-card").first.click()
     page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    page.click("[data-step='files']")
+    page.wait_for_selector("#step-files.active", timeout=3000)
     page.locator(".file-row").first.click()
     page.wait_for_selector("#screen-report.active", timeout=3000)
 
     assert "orphan.pdf" in page.locator("#report-title").text_content()
-    assert "not run" in page.locator("#report-status").text_content()
+    assert "not run" in page.locator("#report-verdict").text_content()
     assert page.locator("#meta-redactions").text_content() == "--"
     assert page.locator("#meta-language").text_content() == "--"
     assert page.locator("#meta-threshold").text_content() == "--"
@@ -550,10 +819,16 @@ def test_open_preview_and_reveal_errors(ui_server, page):
     )
     page.add_init_script(mock)
     page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
     page.evaluate(FIRE_EVENT_JS)
     page.wait_for_selector(".project-card", timeout=3000)
     page.locator(".project-card").first.click()
     page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    page.click("[data-step='files']")
+    page.wait_for_selector("#step-files.active", timeout=3000)
     page.locator(".file-row").first.click()
     page.wait_for_selector("#screen-report.active", timeout=3000)
 
@@ -573,6 +848,10 @@ def test_keyboard_run_triggers(ui_page):
     """Enter on focused Run button triggers the action."""
     ui_page.locator(".project-card").first.click()
     ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+
+    # Navigate to the run step
+    ui_page.click("[data-step='run']")
+    ui_page.wait_for_selector("#step-run.active", timeout=3000)
 
     ui_page.evaluate("""
         window._runCalled = false;
