@@ -81,6 +81,45 @@ def test_new_project_calls_api(ui_server, page):
     assert page.evaluate("window._createCalled") is True
 
 
+def test_change_project_root_reloads_projects(ui_server, page):
+    """Change Project Folder calls selection API and reloads project list."""
+    mock = build_mock_js(fire_event=False) + """
+    window._selectCalls = 0;
+    window._listCalls = 0;
+    window.pywebview.api.select_project_root = function() {
+        window._selectCalls += 1;
+        return Promise.resolve(JSON.stringify({status: "ok", root: "/tmp/obscura-new"}));
+    };
+    window.pywebview.api.list_projects = function() {
+        window._listCalls += 1;
+        return Promise.resolve(JSON.stringify({
+            needs_root: false,
+            projects: [{name: "Reselected Matter", last_run: null, language: "eng", confidence_threshold: 70}]
+        }));
+    };
+    """
+    page.add_init_script(mock)
+    page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
+    page.evaluate(FIRE_EVENT_JS)
+    page.wait_for_selector(".project-card", timeout=3000)
+
+    page.click("#change-project-root-btn")
+    page.wait_for_function("window._selectCalls === 1", timeout=3000)
+    page.wait_for_function("window._listCalls >= 2", timeout=3000)
+
+    card_title = page.locator(".project-card .card-title").first
+    card_title.wait_for(state="visible", timeout=3000)
+    assert "Reselected Matter" in card_title.text_content()
+
+    toast = page.locator(".toast")
+    toast.wait_for(state="visible", timeout=3000)
+    assert "Project folder updated." in toast.first.text_content()
+
+
 # =========================================================================== #
 # Screen 3 — Workspace (Stepper: Keywords / Files / Run)
 # =========================================================================== #

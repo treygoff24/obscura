@@ -27,6 +27,7 @@
         projectList: document.getElementById("project-list"),
         projectListBody: document.getElementById("project-list-body"),
         newProjectBtn: document.getElementById("new-project-btn"),
+        changeProjectRootBtn: document.getElementById("change-project-root-btn"),
 
         /* Workspace header */
         backToProjects: document.getElementById("back-to-projects"),
@@ -311,10 +312,19 @@
 
     /* --- Screen 1: Welcome --- */
 
+    async function chooseProjectRoot() {
+        var result = await window.pywebview.api.select_project_root();
+        try {
+            return JSON.parse(result || "{}");
+        } catch (_) {
+            return {};
+        }
+    }
+
     if (el.getStartedBtn) {
         el.getStartedBtn.addEventListener("click", async function () {
             try {
-                await window.pywebview.api.select_project_root();
+                await chooseProjectRoot();
             } catch (_) {
                 /* User may cancel folder selection; continue anyway */
             }
@@ -370,6 +380,27 @@
     el.newProjectBtn.addEventListener("click", function () {
         openModal();
     });
+
+    if (el.changeProjectRootBtn) {
+        el.changeProjectRootBtn.addEventListener("click", async function () {
+            try {
+                var response = await chooseProjectRoot();
+                if (response.error) {
+                    if (response.error !== "No folder selected") {
+                        showToast("Failed to change project folder.", "error");
+                    }
+                    return;
+                }
+                currentProject = null;
+                currentReport = null;
+                showScreen("projects");
+                await loadProjects();
+                showToast("Project folder updated.", "success");
+            } catch (_) {
+                showToast("Failed to change project folder.", "error");
+            }
+        });
+    }
 
     if (el.modalCreateBtn) {
         el.modalCreateBtn.addEventListener("click", async function () {

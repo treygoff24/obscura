@@ -279,6 +279,12 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 #screen-projects header h1 { flex: 1; }
 
+.header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
 #project-list {
     flex: 1;
     overflow-y: auto;
