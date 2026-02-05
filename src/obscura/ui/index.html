@@ -8,167 +8,247 @@
 </head>
 <body>
 
-    <!-- Screen 1: Project List -->
-    <div id="screen-projects" class="screen active">
-        <header>
+    <!-- Screen 1: Welcome -->
+    <div id="screen-welcome" class="screen active">
+        <div class="welcome-container">
             <h1>Obscura</h1>
-            <button id="new-project-btn">New Project</button>
+            <p class="tagline">Black out sensitive words from your PDFs</p>
+            <div class="welcome-steps">
+                <div class="welcome-step">
+                    <span class="step-icon">1</span>
+                    <h2>Add your words</h2>
+                    <p>Type the words or phrases you want removed</p>
+                </div>
+                <div class="welcome-step">
+                    <span class="step-icon">2</span>
+                    <h2>Drop in your PDFs</h2>
+                    <p>Drag files or browse to select them</p>
+                </div>
+                <div class="welcome-step">
+                    <span class="step-icon">3</span>
+                    <h2>Get clean documents</h2>
+                    <p>Obscura blacks out every match and verifies the result</p>
+                </div>
+            </div>
+            <button id="get-started-btn" class="btn-primary btn-lg">Get Started</button>
+            <p class="welcome-note">You'll choose a folder to store your projects</p>
+        </div>
+    </div>
+
+    <!-- Screen 2: Project List -->
+    <div id="screen-projects" class="screen">
+        <header>
+            <h1>Your Projects</h1>
+            <button id="new-project-btn" class="btn-primary">New Project</button>
         </header>
         <main id="project-list">
-            <div id="root-prompt" class="root-prompt hidden">
-                <h2>Select a Project Folder</h2>
-                <p>Choose where Obscura will store your project folders.</p>
-                <button id="select-root-btn">Choose Folder</button>
-            </div>
             <div id="project-list-body">
                 <p class="empty-state">Loading projects...</p>
             </div>
         </main>
     </div>
 
-    <!-- Screen 2: Project Workspace -->
+    <!-- Screen 3: Workspace -->
     <div id="screen-workspace" class="screen">
         <header>
-            <button id="back-to-projects" class="btn-back" title="Back to projects">&larr;</button>
+            <button id="back-to-projects" class="btn-back">&larr; Back</button>
             <h1 id="workspace-title">Project</h1>
-            <span id="workspace-language" class="header-badge"></span>
         </header>
-        <div class="workspace-panels">
-            <!-- Left: Keywords -->
-            <section class="panel panel-keywords">
-                <div class="panel-header">
-                    <h2>Keywords</h2>
+
+        <nav class="stepper">
+            <button class="step-tab active" data-step="keywords">
+                <span class="step-number">1</span> Words to redact
+            </button>
+            <button class="step-tab" data-step="files">
+                <span class="step-number">2</span> Your documents
+            </button>
+            <button class="step-tab" data-step="run">
+                <span class="step-number">3</span> Redact
+            </button>
+        </nav>
+
+        <!-- Step 1: Keywords -->
+        <section id="step-keywords" class="step-panel active">
+            <div class="step-content">
+                <h2>What words should be blacked out?</h2>
+                <p class="step-desc">Type one word or phrase per line. Every match will be covered with a black box in your PDFs.</p>
+                <div class="keywords-wrap">
+                    <label class="sr-only" for="keywords-editor">Words to redact</label>
+                    <textarea id="keywords-editor" placeholder="Type words to redact, one per line&#10;&#10;Example:&#10;John Smith&#10;Acme Corp&#10;confidential" spellcheck="false"></textarea>
                     <span id="save-indicator" class="save-indicator"></span>
                 </div>
-                <textarea id="keywords-editor" placeholder="One keyword per line&#10;&#10;Prefix matching: investor*&#10;Regex: regex:\binvestor\b" spellcheck="false"></textarea>
-                <button id="save-keywords-btn">Save Keywords</button>
                 <div id="keyword-errors" class="validation-error hidden"></div>
-            </section>
+                <details class="advanced-section">
+                    <summary>Advanced: pattern matching</summary>
+                    <p>Append <code>*</code> to match prefixes (e.g. <code>investor*</code> matches "investors", "investor-relations").</p>
+                    <p>Prefix a line with <code>regex:</code> to use a regular expression (e.g. <code>regex:\binvestor\b</code>).</p>
+                </details>
+                <button id="step-next-files" class="btn-primary btn-next">Next: Add documents &rarr;</button>
+            </div>
+        </section>
 
-            <!-- Center: File List -->
-            <section class="panel panel-files">
-                <div class="panel-header">
-                    <h2>Files</h2>
-                    <div class="panel-actions">
-                        <button id="add-files-btn">Add Files</button>
-                        <span id="file-count" class="header-count"></span>
-                    </div>
+        <!-- Step 2: Files -->
+        <section id="step-files" class="step-panel">
+            <div class="step-content">
+                <h2>Add your PDF documents</h2>
+                <p class="step-desc">Drop files below or click to browse. Only PDF files are accepted.</p>
+                <div id="file-drop" class="file-drop-zone">
+                    <div class="drop-illustration"><span aria-hidden="true">&#128196;</span></div>
+                    <p class="drop-text">Drag and drop PDFs here</p>
+                    <button id="add-files-btn" class="btn-secondary">Browse files</button>
                 </div>
-                <div id="file-drop" class="file-drop">
-                    Drag and drop PDFs here
+                <div id="file-list"></div>
+                <span id="file-count" class="file-count"></span>
+                <div class="step-nav">
+                    <button id="step-prev-keywords" class="btn-secondary btn-prev">&larr; Words</button>
+                    <button id="step-next-run" class="btn-primary btn-next">Next: Redact &rarr;</button>
                 </div>
-                <div id="file-list">
-                    <p class="empty-state">Run redaction to see file results.</p>
-                </div>
-            </section>
+            </div>
+        </section>
 
-            <!-- Right: Run Controls -->
-            <section class="panel panel-controls">
-                <div class="panel-header">
-                    <h2>Run</h2>
+        <!-- Step 3: Run -->
+        <section id="step-run" class="step-panel">
+            <div class="step-content">
+                <h2>Ready to redact</h2>
+                <p class="step-desc">Obscura will black out every matching word and verify the results.</p>
+                <button id="run-btn" class="btn-run">Redact my documents</button>
+                <div id="run-progress" class="run-progress hidden">
+                    <div class="progress-bar">
+                        <div id="progress-fill" class="progress-fill"></div>
+                    </div>
+                    <p id="progress-text">Processing…</p>
                 </div>
-                <div class="controls-body">
-                    <button id="run-btn" class="btn-run">Run Redaction</button>
-                    <label class="select-row">
-                        <span>OCR Language</span>
-                        <select id="language-select">
-                            <option value="eng" selected>English (eng)</option>
-                            <option value="spa">Spanish (spa)</option>
-                            <option value="eng+spa">English + Spanish (eng+spa)</option>
-                        </select>
-                    </label>
-                    <p class="helper-text">Mixed-language mode may reduce OCR accuracy on single-language documents.</p>
-                    <label class="checkbox-row">
-                        <input type="checkbox" id="deep-verify-check">
-                        <span>Deep Verify</span>
-                    </label>
-                    <div id="dpi-row" class="dpi-row hidden">
-                        <label for="dpi-select">DPI</label>
-                        <select id="dpi-select">
-                            <option value="150">150</option>
-                            <option value="300" selected>300</option>
-                            <option value="400">400</option>
-                            <option value="600">600</option>
-                        </select>
-                    </div>
-                    <div id="run-spinner" class="spinner hidden">
-                        <div class="spinner-ring"></div>
-                        <span>Processing...</span>
-                    </div>
-                    <div id="run-summary" class="run-summary hidden">
-                        <h3>Last Run</h3>
-                        <div class="summary-grid">
-                            <span class="summary-label">Files processed</span>
-                            <span id="sum-files" class="summary-value">0</span>
-                            <span class="summary-label">Redactions applied</span>
-                            <span id="sum-redactions" class="summary-value">0</span>
-                            <span class="summary-label">Needs review</span>
-                            <span id="sum-review" class="summary-value">0</span>
+                <div id="run-summary" class="run-summary hidden">
+                    <div id="summary-verdict"></div>
+                    <div class="summary-stats">
+                        <div class="stat">
+                            <span id="sum-files" class="stat-value">0</span>
+                            <span class="stat-label">documents processed</span>
+                        </div>
+                        <div class="stat">
+                            <span id="sum-redactions" class="stat-value">0</span>
+                            <span class="stat-label">words blacked out</span>
+                        </div>
+                        <div class="stat">
+                            <span id="sum-review" class="stat-value">0</span>
+                            <span class="stat-label">need your attention</span>
                         </div>
                     </div>
                 </div>
-            </section>
-        </div>
+                <details class="advanced-section">
+                    <summary>Settings</summary>
+                    <div class="setting-row">
+                        <label for="language-select">Document language</label>
+                        <select id="language-select">
+                            <option value="eng" selected>English</option>
+                            <option value="spa">Spanish</option>
+                            <option value="eng+spa">English + Spanish</option>
+                        </select>
+                    </div>
+                    <div class="setting-row checkbox-setting">
+                        <input type="checkbox" id="deep-verify-check">
+                        <label for="deep-verify-check">Double-check with OCR scan</label>
+                    </div>
+                    <div id="dpi-row" class="setting-row hidden">
+                        <label for="dpi-select">Scan quality</label>
+                        <select id="dpi-select">
+                            <option value="150">Low / faster</option>
+                            <option value="300" selected>Medium</option>
+                            <option value="400">High</option>
+                            <option value="600">Maximum / slower</option>
+                        </select>
+                    </div>
+                </details>
+                <button id="step-prev-files" class="btn-secondary btn-prev">&larr; Documents</button>
+            </div>
+        </section>
     </div>
 
-    <!-- Screen 3: File Report Detail -->
+    <!-- Screen 4: Report Detail -->
     <div id="screen-report" class="screen">
         <header>
-            <button id="back-to-workspace" class="btn-back" title="Back to workspace">&larr;</button>
+            <button id="back-to-workspace" class="btn-back">&larr; Back</button>
             <h1 id="report-title">File Report</h1>
-            <span id="report-status" class="status-pill"></span>
         </header>
         <main class="report-body">
+            <div id="report-verdict" class="report-verdict"></div>
             <div class="report-actions">
-                <button id="open-preview-btn">Open in Preview</button>
-                <button id="reveal-finder-btn">Reveal in Finder</button>
+                <button id="open-preview-btn" class="btn-primary">Open redacted PDF</button>
+                <button id="reveal-finder-btn" class="btn-secondary">Show in folder</button>
             </div>
 
             <section id="report-residual" class="report-section hidden">
-                <h2>Residual Matches</h2>
-                <p class="section-note">Keywords found in the redacted output. These need manual review.</p>
+                <h2>Words that may still be visible</h2>
+                <p class="section-note">These words were found in the redacted document. Please open the PDF and check these pages manually.</p>
                 <table id="residual-table">
                     <thead>
-                        <tr><th>Keyword</th><th>Page</th><th>Source</th></tr>
+                        <tr><th>Word</th><th>Page</th><th>Found by</th></tr>
                     </thead>
                     <tbody></tbody>
                 </table>
             </section>
 
             <section id="report-lowconf" class="report-section hidden">
-                <h2>Low Confidence Pages</h2>
-                <p class="section-note">OCR confidence below threshold. Text extraction may be unreliable.</p>
-                <div id="lowconf-pages" class="page-list"></div>
+                <h2>Pages that couldn't be read clearly</h2>
+                <p class="section-note">The text on these pages was hard to read. You may want to check them yourself.</p>
+                <div id="lowconf-pages"></div>
             </section>
 
             <section id="report-unreadable" class="report-section hidden">
-                <h2>Unreadable Pages</h2>
+                <h2>Pages we couldn't check</h2>
                 <div id="unreadable-warning" class="warning-box"></div>
-                <div id="unreadable-pages" class="page-list"></div>
+                <div id="unreadable-pages"></div>
             </section>
 
             <section id="report-clean" class="report-section">
-                <h2>Clean Pages</h2>
-                <div id="clean-pages" class="page-list"></div>
+                <h2>Verified clean pages</h2>
+                <div id="clean-pages"></div>
             </section>
 
-            <section id="report-meta" class="report-section">
-                <h2>Details</h2>
+            <details class="advanced-section">
+                <summary>Technical details</summary>
                 <div class="meta-grid">
-                    <span class="meta-label">Redactions applied</span>
+                    <span class="meta-label">Words blacked out</span>
                     <span id="meta-redactions" class="meta-value"></span>
-                    <span class="meta-label">Deep verify</span>
+                    <span class="meta-label">OCR double-check</span>
                     <span id="meta-deepverify" class="meta-value"></span>
-                    <span class="meta-label">Language</span>
+                    <span class="meta-label">Document language</span>
                     <span id="meta-language" class="meta-value"></span>
                     <span class="meta-label">Confidence threshold</span>
                     <span id="meta-threshold" class="meta-value"></span>
-                    <span class="meta-label">Timestamp</span>
+                    <span class="meta-label">Processed at</span>
                     <span id="meta-timestamp" class="meta-value"></span>
                 </div>
-            </section>
+            </details>
         </main>
     </div>
+
+    <!-- Modal System -->
+        <div id="modal-overlay" class="modal-overlay hidden" aria-hidden="true">
+            <div id="modal-new-project" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-new-project-title" aria-describedby="modal-new-project-desc">
+                <h2 id="modal-new-project-title">Create new project</h2>
+                <p id="modal-new-project-desc">Each project has its own word list and set of documents.</p>
+                <div class="modal-field">
+                    <label for="modal-project-name">Project name</label>
+                    <input type="text" id="modal-project-name" name="project_name" autocomplete="off" placeholder="e.g. Q1 Board Report">
+                </div>
+            <div class="modal-field">
+                <label for="modal-project-language">Document language</label>
+                <select id="modal-project-language">
+                    <option value="eng" selected>English</option>
+                    <option value="spa">Spanish</option>
+                    <option value="eng+spa">English + Spanish</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button id="modal-cancel-btn" class="btn-secondary">Cancel</button>
+                <button id="modal-create-btn" class="btn-primary">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+        <div id="toast-container" class="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <script src="app.js"></script>
 </body>

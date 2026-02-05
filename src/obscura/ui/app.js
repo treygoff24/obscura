@@ -1,51 +1,78 @@
-/* Obscura UI — three-screen SPA communicating with Python via pywebview. */
+/* Obscura UI — four-screen SPA communicating with Python via pywebview. */
 
 (function () {
     "use strict";
 
-    let currentProject = null;
-    let currentReport = null;
-    let currentFileName = null;
-    let keywordSaveTimer = null;
+    var currentProject = null;
+    var currentReport = null;
+    var currentFileName = null;
+    var keywordSaveTimer = null;
+    var lastFocused = null;
+    var modalOpen = false;
 
     /* --- DOM refs --- */
 
-    const screens = {
+    var screens = {
+        welcome: document.getElementById("screen-welcome"),
         projects: document.getElementById("screen-projects"),
         workspace: document.getElementById("screen-workspace"),
         report: document.getElementById("screen-report"),
     };
 
-    const el = {
+    var el = {
+        /* Welcome */
+        getStartedBtn: document.getElementById("get-started-btn"),
+
+        /* Project list */
         projectList: document.getElementById("project-list"),
         projectListBody: document.getElementById("project-list-body"),
-        rootPrompt: document.getElementById("root-prompt"),
-        selectRootBtn: document.getElementById("select-root-btn"),
         newProjectBtn: document.getElementById("new-project-btn"),
+
+        /* Workspace header */
         backToProjects: document.getElementById("back-to-projects"),
         workspaceTitle: document.getElementById("workspace-title"),
-        workspaceLanguage: document.getElementById("workspace-language"),
+
+        /* Stepper */
+        stepTabs: document.querySelectorAll(".step-tab"),
+        stepPanels: document.querySelectorAll(".step-panel"),
+
+        /* Step 1: Keywords */
+        stepKeywords: document.getElementById("step-keywords"),
         keywordsEditor: document.getElementById("keywords-editor"),
-        saveKeywordsBtn: document.getElementById("save-keywords-btn"),
         saveIndicator: document.getElementById("save-indicator"),
         keywordErrors: document.getElementById("keyword-errors"),
+        stepNextFiles: document.getElementById("step-next-files"),
+
+        /* Step 2: Files */
+        stepFiles: document.getElementById("step-files"),
+        fileDrop: document.getElementById("file-drop"),
+        addFilesBtn: document.getElementById("add-files-btn"),
         fileList: document.getElementById("file-list"),
         fileCount: document.getElementById("file-count"),
-        addFilesBtn: document.getElementById("add-files-btn"),
-        fileDrop: document.getElementById("file-drop"),
+        stepPrevKeywords: document.getElementById("step-prev-keywords"),
+        stepNextRun: document.getElementById("step-next-run"),
+
+        /* Step 3: Run */
+        stepRun: document.getElementById("step-run"),
         runBtn: document.getElementById("run-btn"),
+        runProgress: document.getElementById("run-progress"),
+        progressFill: document.getElementById("progress-fill"),
+        progressText: document.getElementById("progress-text"),
+        runSummary: document.getElementById("run-summary"),
+        summaryVerdict: document.getElementById("summary-verdict"),
+        sumFiles: document.getElementById("sum-files"),
+        sumRedactions: document.getElementById("sum-redactions"),
+        sumReview: document.getElementById("sum-review"),
         languageSelect: document.getElementById("language-select"),
         deepVerifyCheck: document.getElementById("deep-verify-check"),
         dpiRow: document.getElementById("dpi-row"),
         dpiSelect: document.getElementById("dpi-select"),
-        runSpinner: document.getElementById("run-spinner"),
-        runSummary: document.getElementById("run-summary"),
-        sumFiles: document.getElementById("sum-files"),
-        sumRedactions: document.getElementById("sum-redactions"),
-        sumReview: document.getElementById("sum-review"),
+        stepPrevFiles: document.getElementById("step-prev-files"),
+
+        /* Report detail */
         backToWorkspace: document.getElementById("back-to-workspace"),
         reportTitle: document.getElementById("report-title"),
-        reportStatus: document.getElementById("report-status"),
+        reportVerdict: document.getElementById("report-verdict"),
         openPreviewBtn: document.getElementById("open-preview-btn"),
         revealFinderBtn: document.getElementById("reveal-finder-btn"),
         residualSection: document.getElementById("report-residual"),
@@ -62,13 +89,66 @@
         metaLanguage: document.getElementById("meta-language"),
         metaThreshold: document.getElementById("meta-threshold"),
         metaTimestamp: document.getElementById("meta-timestamp"),
+
+        /* Modal */
+        modalOverlay: document.getElementById("modal-overlay"),
+        modalNewProject: document.getElementById("modal-new-project"),
+        modalProjectName: document.getElementById("modal-project-name"),
+        modalProjectLanguage: document.getElementById("modal-project-language"),
+        modalCancelBtn: document.getElementById("modal-cancel-btn"),
+        modalCreateBtn: document.getElementById("modal-create-btn"),
+
+        /* Toast */
+        toastContainer: document.getElementById("toast-container"),
     };
 
     /* --- Routing --- */
 
     function showScreen(name) {
-        Object.values(screens).forEach(function (s) { s.classList.remove("active"); });
-        screens[name].classList.add("active");
+        Object.values(screens).forEach(function (s) {
+            if (s) s.classList.remove("active");
+        });
+        if (screens[name]) screens[name].classList.add("active");
+    }
+
+    /* --- Stepper --- */
+
+    var stepOrder = ["keywords", "files", "run"];
+
+    function showStep(stepName) {
+        el.stepTabs.forEach(function (tab) {
+            if (tab.dataset.step === stepName) {
+                tab.classList.add("active");
+            } else {
+                tab.classList.remove("active");
+            }
+        });
+        el.stepPanels.forEach(function (panel) {
+            if (panel.id === "step-" + stepName) {
+                panel.classList.add("active");
+            } else {
+                panel.classList.remove("active");
+            }
+        });
+    }
+
+    el.stepTabs.forEach(function (tab) {
+        tab.addEventListener("click", function () {
+            showStep(tab.dataset.step);
+        });
+    });
+
+    if (el.stepNextFiles) {
+        el.stepNextFiles.addEventListener("click", function () { showStep("files"); });
+    }
+    if (el.stepPrevKeywords) {
+        el.stepPrevKeywords.addEventListener("click", function () { showStep("keywords"); });
+    }
+    if (el.stepNextRun) {
+        el.stepNextRun.addEventListener("click", function () { showStep("run"); });
+    }
+    if (el.stepPrevFiles) {
+        el.stepPrevFiles.addEventListener("click", function () { showStep("files"); });
     }
 
     /* --- Helpers --- */
@@ -103,7 +183,109 @@
         return status.replace(/_/g, " ");
     }
 
-    /* --- Screen 1: Project List --- */
+    function verdictHTML(status) {
+        var label = statusLabel(status);
+        return '<span class="status-pill ' + statusClass(status) + '">' + label + "</span>";
+    }
+
+    function setProgress(value) {
+        if (el.progressFill) {
+            el.progressFill.style.transform = "scaleX(" + value + ")";
+        }
+    }
+
+    /* --- Toasts --- */
+
+    function showToast(message, type) {
+        if (!el.toastContainer) return;
+        var toast = document.createElement("div");
+        toast.className = "toast" + (type ? " toast-" + type : "");
+        toast.textContent = message;
+        el.toastContainer.appendChild(toast);
+        setTimeout(function () {
+            toast.classList.add("toast-exit");
+            setTimeout(function () { toast.remove(); }, 300);
+        }, 3000);
+    }
+
+    /* --- Modal --- */
+
+    function openModal() {
+        lastFocused = document.activeElement;
+        if (el.modalProjectName) el.modalProjectName.value = "";
+        if (el.modalProjectLanguage) el.modalProjectLanguage.value = "eng";
+        if (el.modalOverlay) el.modalOverlay.classList.remove("hidden");
+        if (el.modalOverlay) el.modalOverlay.setAttribute("aria-hidden", "false");
+        if (el.modalNewProject) el.modalNewProject.classList.remove("hidden");
+        modalOpen = true;
+        if (el.modalProjectName) el.modalProjectName.focus();
+    }
+
+    function closeModal() {
+        if (el.modalOverlay) el.modalOverlay.classList.add("hidden");
+        if (el.modalOverlay) el.modalOverlay.setAttribute("aria-hidden", "true");
+        if (el.modalNewProject) el.modalNewProject.classList.add("hidden");
+        modalOpen = false;
+        if (lastFocused && typeof lastFocused.focus === "function") {
+            lastFocused.focus();
+        }
+    }
+
+    if (el.modalCancelBtn) {
+        el.modalCancelBtn.addEventListener("click", closeModal);
+    }
+
+    if (el.modalOverlay) {
+        el.modalOverlay.addEventListener("click", function (e) {
+            if (e.target === el.modalOverlay) closeModal();
+        });
+    }
+
+    function getModalFocusables() {
+        if (!el.modalNewProject) return [];
+        return Array.prototype.slice.call(
+            el.modalNewProject.querySelectorAll(
+                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+            )
+        );
+    }
+
+    document.addEventListener("keydown", function (e) {
+        if (!modalOpen) return;
+        if (e.key === "Escape") {
+            e.preventDefault();
+            closeModal();
+            return;
+        }
+        if (e.key !== "Tab") return;
+        var focusables = getModalFocusables();
+        if (focusables.length === 0) return;
+        var first = focusables[0];
+        var last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+        }
+    });
+
+    /* --- Screen 1: Welcome --- */
+
+    if (el.getStartedBtn) {
+        el.getStartedBtn.addEventListener("click", async function () {
+            try {
+                await window.pywebview.api.select_project_root();
+            } catch (_) {
+                /* User may cancel folder selection; continue anyway */
+            }
+            showScreen("projects");
+            await loadProjects();
+        });
+    }
+
+    /* --- Screen 2: Project List --- */
 
     async function loadProjects() {
         el.projectListBody.innerHTML = '<p class="empty-state">Loading projects...</p>';
@@ -112,11 +294,13 @@
             var data = JSON.parse(result);
             var projects = data.projects || [];
             if (data.needs_root) {
+                /* Show welcome screen for initial root selection */
+                if (screens.welcome) {
+                    showScreen("welcome");
+                }
                 el.projectListBody.innerHTML = "";
-                el.rootPrompt.classList.remove("hidden");
                 return;
             }
-            el.rootPrompt.classList.add("hidden");
             if (projects.length === 0) {
                 el.projectListBody.innerHTML =
                     '<p class="empty-state">No projects yet. Click "New Project" to get started.</p>';
@@ -125,10 +309,11 @@
             var grid = document.createElement("div");
             grid.className = "project-grid";
             projects.forEach(function (p) {
-                var card = document.createElement("div");
+                var card = document.createElement("button");
                 card.className = "project-card";
+                card.type = "button";
                 card.innerHTML =
-                    "<h3>" + esc(p.name) + "</h3>" +
+                    "<h2>" + esc(p.name) + "</h2>" +
                     '<div class="meta">' +
                     (p.last_run ? "Last run: " + formatDate(p.last_run) : "Not yet run") +
                     "<br>Language: " + esc(p.language) +
@@ -144,38 +329,35 @@
         }
     }
 
-    el.selectRootBtn.addEventListener("click", async function () {
-        try {
-            await window.pywebview.api.select_project_root();
-            await loadProjects();
-        } catch (_) {
-            alert("Failed to select project folder.");
-        }
+    el.newProjectBtn.addEventListener("click", function () {
+        openModal();
     });
 
-    el.newProjectBtn.addEventListener("click", async function () {
-        var name = prompt("Project name:");
-        if (!name || !name.trim()) return;
-        var language = prompt("OCR language (eng, spa, eng+spa):", "eng") || "eng";
-        language = language.trim() || "eng";
-        try {
-            await window.pywebview.api.create_project(name.trim(), language);
-            await loadProjects();
-        } catch (e) {
-            alert("Failed to create project: " + e.message);
-        }
-    });
+    if (el.modalCreateBtn) {
+        el.modalCreateBtn.addEventListener("click", async function () {
+            var name = el.modalProjectName ? el.modalProjectName.value.trim() : "";
+            if (!name) return;
+            var language = el.modalProjectLanguage ? el.modalProjectLanguage.value : "eng";
+            closeModal();
+            try {
+                await window.pywebview.api.create_project(name, language);
+                await loadProjects();
+            } catch (e) {
+                alert("Failed to create project: " + (e.message || e));
+            }
+        });
+    }
 
-    /* --- Screen 2: Workspace --- */
+    /* --- Screen 3: Workspace --- */
 
     async function openProject(name, language) {
         currentProject = name;
         currentReport = null;
         el.workspaceTitle.textContent = name;
-        el.workspaceLanguage.textContent = language || "eng";
-        el.runSummary.classList.add("hidden");
-        el.runSpinner.classList.add("hidden");
+        if (el.runSummary) el.runSummary.classList.add("hidden");
+        if (el.runProgress) el.runProgress.classList.add("hidden");
         el.runBtn.disabled = false;
+        showStep("keywords");
         showScreen("workspace");
         await loadProjectSettings();
         await loadKeywords();
@@ -206,33 +388,28 @@
         try {
             var result = await window.pywebview.api.get_project_settings(currentProject);
             var settings = JSON.parse(result);
-            if (settings.language) {
+            if (settings.language && el.languageSelect) {
                 el.languageSelect.value = settings.language;
-                el.workspaceLanguage.textContent = settings.language;
             }
         } catch (_) {
-            // leave defaults
+            /* leave defaults */
         }
     }
 
-    el.languageSelect.addEventListener("change", async function () {
-        if (!currentProject) return;
-        try {
-            var result = await window.pywebview.api.update_project_settings(
-                currentProject,
-                el.languageSelect.value,
-                null
-            );
-            var settings = JSON.parse(result);
-            el.workspaceLanguage.textContent = settings.language;
-        } catch (_) {
-            alert("Failed to update language.");
-        }
-    });
-
-    el.saveKeywordsBtn.addEventListener("click", async function () {
-        await saveKeywords();
-    });
+    if (el.languageSelect) {
+        el.languageSelect.addEventListener("change", async function () {
+            if (!currentProject) return;
+            try {
+                await window.pywebview.api.update_project_settings(
+                    currentProject,
+                    el.languageSelect.value,
+                    null
+                );
+            } catch (_) {
+                alert("Failed to update language.");
+            }
+        });
+    }
 
     el.keywordsEditor.addEventListener("input", function () {
         if (keywordSaveTimer) {
@@ -324,8 +501,9 @@
         el.fileCount.textContent = files.length + " file" + (files.length !== 1 ? "s" : "");
         el.fileList.innerHTML = "";
         files.forEach(function (f) {
-            var row = document.createElement("div");
+            var row = document.createElement("button");
             row.className = "file-row";
+            row.type = "button";
             var pill = '<span class="status-pill ' + statusClass(f.status) + '">' +
                        statusLabel(f.status) + "</span>";
             var redactionsText = "";
@@ -395,42 +573,58 @@
 
     /* Deep Verify toggle */
 
-    el.deepVerifyCheck.addEventListener("change", function () {
-        el.dpiRow.classList.toggle("hidden", !el.deepVerifyCheck.checked);
-    });
+    if (el.deepVerifyCheck) {
+        el.deepVerifyCheck.addEventListener("change", function () {
+            el.dpiRow.classList.toggle("hidden", !el.deepVerifyCheck.checked);
+        });
+    }
 
     /* Run */
 
-    el.runBtn.addEventListener("click", async function () {
+        el.runBtn.addEventListener("click", async function () {
         el.runBtn.disabled = true;
-        el.runSpinner.classList.remove("hidden");
-        el.runSummary.classList.add("hidden");
+        if (el.runProgress) el.runProgress.classList.remove("hidden");
+        setProgress(0);
+        if (el.progressText) el.progressText.textContent = "Processing…";
+        if (el.runSummary) el.runSummary.classList.add("hidden");
         try {
-            var deepVerify = el.deepVerifyCheck.checked;
-            var dpi = parseInt(el.dpiSelect.value, 10);
+            var deepVerify = el.deepVerifyCheck ? el.deepVerifyCheck.checked : false;
+            var dpi = el.dpiSelect ? parseInt(el.dpiSelect.value, 10) : 300;
+            setProgress(0.3);
             var result = await window.pywebview.api.run_project(currentProject, deepVerify, dpi);
+            setProgress(1);
             var summary = JSON.parse(result);
             el.sumFiles.textContent = summary.files_processed;
             el.sumRedactions.textContent = summary.total_redactions;
             el.sumReview.textContent = summary.files_needing_review;
-            el.runSummary.classList.remove("hidden");
+            if (el.summaryVerdict) {
+                if (summary.files_needing_review > 0) {
+                    el.summaryVerdict.innerHTML = '<span class="status-pill status-needs_review">Needs review</span>';
+                } else {
+                    el.summaryVerdict.innerHTML = '<span class="status-pill status-clean">All clean</span>';
+                }
+            }
+            if (el.runSummary) el.runSummary.classList.remove("hidden");
+            showToast("Redaction complete", "success");
             await loadReport();
             await loadFiles();
         } catch (e) {
             alert("Run failed: " + (e.message || e));
         } finally {
-            el.runSpinner.classList.add("hidden");
+            if (el.runProgress) el.runProgress.classList.add("hidden");
             el.runBtn.disabled = false;
         }
     });
 
-    /* --- Screen 3: File Report Detail --- */
+    /* --- Screen 4: File Report Detail --- */
 
     function openFileReport(fileData) {
         currentFileName = fileData.file;
         el.reportTitle.textContent = fileData.file;
-        el.reportStatus.textContent = statusLabel(fileData.status);
-        el.reportStatus.className = "status-pill " + statusClass(fileData.status);
+
+        if (el.reportVerdict) {
+            el.reportVerdict.innerHTML = verdictHTML(fileData.status);
+        }
 
         /* Residual matches */
         var residuals = fileData.residual_matches || [];
@@ -517,5 +711,13 @@
 
     /* --- Init --- */
 
-    window.addEventListener("pywebviewready", loadProjects);
+    window.addEventListener("pywebviewready", function () {
+        /* If welcome screen is active, wait for Get Started click.
+           Otherwise go straight to project list. */
+        if (screens.welcome && screens.welcome.classList.contains("active")) {
+            /* Welcome screen handles its own flow */
+            return;
+        }
+        loadProjects();
+    });
 })();
