@@ -80,7 +80,8 @@ window.pywebview = { api: {
         status: "ok", language: lang || "eng", confidence_threshold: thresh || 70
     })),
     open_in_preview: (name, filename) => Promise.resolve(JSON.stringify({status: "ok"})),
-    reveal_in_finder: (name, filename) => Promise.resolve(JSON.stringify({status: "ok"}))
+    reveal_in_finder: (name, filename) => Promise.resolve(JSON.stringify({status: "ok"})),
+    reveal_output_folder: (name) => Promise.resolve(JSON.stringify({status: "ok"}))
 }};
 """
 

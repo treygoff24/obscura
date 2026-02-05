@@ -251,6 +251,14 @@ class ObscuraAPI:
         subprocess.Popen(["open", "-R", "--", str(file_path)])
         return json.dumps({"status": "ok"})
 
+    def reveal_output_folder(self, name: str) -> str:
+        project = self._resolve_project(name)
+        output_dir = project.output_dir
+        if not output_dir.exists():
+            return json.dumps({"error": "Output folder not found"})
+        subprocess.Popen(["open", "--", str(output_dir)])
+        return json.dumps({"status": "ok"})
+
 
 def _resolve_output_file(project: Project, filename: str) -> pathlib.Path | None:
     if not filename:

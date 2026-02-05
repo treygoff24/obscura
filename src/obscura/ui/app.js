@@ -63,6 +63,8 @@
         sumFiles: document.getElementById("sum-files"),
         sumRedactions: document.getElementById("sum-redactions"),
         sumReview: document.getElementById("sum-review"),
+        openOutputBtn: document.getElementById("open-output-btn"),
+        viewFilesBtn: document.getElementById("view-files-btn"),
         languageSelect: document.getElementById("language-select"),
         deepVerifyCheck: document.getElementById("deep-verify-check"),
         dpiRow: document.getElementById("dpi-row"),
@@ -649,6 +651,19 @@
             if (el.runProgress) el.runProgress.classList.add("hidden");
             el.runBtn.disabled = false;
         }
+    });
+
+    el.openOutputBtn.addEventListener("click", async function () {
+        if (!currentProject) return;
+        try {
+            await window.pywebview.api.reveal_output_folder(currentProject);
+        } catch (e) {
+            showToast("Could not open output folder.", "error");
+        }
+    });
+
+    el.viewFilesBtn.addEventListener("click", function () {
+        showStep("files");
     });
 
     /* --- Screen 4: File Report Detail --- */

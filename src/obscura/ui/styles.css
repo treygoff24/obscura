@@ -483,6 +483,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .advanced-section {
     margin-top: 20px;
+    margin-bottom: 16px;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     overflow: hidden;
@@ -660,6 +661,13 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
     font-size: 11px;
     color: var(--text-tertiary);
     text-align: center;
+}
+
+.summary-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+    justify-content: center;
 }
 
 /* Settings (inside advanced-section on run step) */
