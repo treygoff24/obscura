@@ -7,15 +7,146 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div id="app">
+
+    <!-- Screen 1: Project List -->
+    <div id="screen-projects" class="screen active">
         <header>
             <h1>Obscura</h1>
             <button id="new-project-btn">New Project</button>
         </header>
         <main id="project-list">
-            <p>Loading projects...</p>
+            <p class="empty-state">Loading projects...</p>
         </main>
     </div>
+
+    <!-- Screen 2: Project Workspace -->
+    <div id="screen-workspace" class="screen">
+        <header>
+            <button id="back-to-projects" class="btn-back" title="Back to projects">&larr;</button>
+            <h1 id="workspace-title">Project</h1>
+            <span id="workspace-language" class="header-badge"></span>
+        </header>
+        <div class="workspace-panels">
+            <!-- Left: Keywords -->
+            <section class="panel panel-keywords">
+                <div class="panel-header">
+                    <h2>Keywords</h2>
+                    <span id="save-indicator" class="save-indicator"></span>
+                </div>
+                <textarea id="keywords-editor" placeholder="One keyword per line&#10;&#10;Prefix matching: investor*&#10;Regex: regex:\binvestor\b" spellcheck="false"></textarea>
+                <button id="save-keywords-btn">Save Keywords</button>
+            </section>
+
+            <!-- Center: File List -->
+            <section class="panel panel-files">
+                <div class="panel-header">
+                    <h2>Files</h2>
+                    <span id="file-count" class="header-count"></span>
+                </div>
+                <div id="file-list">
+                    <p class="empty-state">Run redaction to see file results.</p>
+                </div>
+            </section>
+
+            <!-- Right: Run Controls -->
+            <section class="panel panel-controls">
+                <div class="panel-header">
+                    <h2>Run</h2>
+                </div>
+                <div class="controls-body">
+                    <button id="run-btn" class="btn-run">Run Redaction</button>
+                    <label class="checkbox-row">
+                        <input type="checkbox" id="deep-verify-check">
+                        <span>Deep Verify</span>
+                    </label>
+                    <div id="dpi-row" class="dpi-row hidden">
+                        <label for="dpi-select">DPI</label>
+                        <select id="dpi-select">
+                            <option value="150">150</option>
+                            <option value="300" selected>300</option>
+                            <option value="400">400</option>
+                            <option value="600">600</option>
+                        </select>
+                    </div>
+                    <div id="run-spinner" class="spinner hidden">
+                        <div class="spinner-ring"></div>
+                        <span>Processing...</span>
+                    </div>
+                    <div id="run-summary" class="run-summary hidden">
+                        <h3>Last Run</h3>
+                        <div class="summary-grid">
+                            <span class="summary-label">Files processed</span>
+                            <span id="sum-files" class="summary-value">0</span>
+                            <span class="summary-label">Redactions applied</span>
+                            <span id="sum-redactions" class="summary-value">0</span>
+                            <span class="summary-label">Needs review</span>
+                            <span id="sum-review" class="summary-value">0</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Screen 3: File Report Detail -->
+    <div id="screen-report" class="screen">
+        <header>
+            <button id="back-to-workspace" class="btn-back" title="Back to workspace">&larr;</button>
+            <h1 id="report-title">File Report</h1>
+            <span id="report-status" class="status-pill"></span>
+        </header>
+        <main class="report-body">
+            <div class="report-actions">
+                <button id="open-preview-btn">Open in Preview</button>
+                <button id="reveal-finder-btn">Reveal in Finder</button>
+            </div>
+
+            <section id="report-residual" class="report-section hidden">
+                <h2>Residual Matches</h2>
+                <p class="section-note">Keywords found in the redacted output. These need manual review.</p>
+                <table id="residual-table">
+                    <thead>
+                        <tr><th>Keyword</th><th>Page</th><th>Source</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+
+            <section id="report-lowconf" class="report-section hidden">
+                <h2>Low Confidence Pages</h2>
+                <p class="section-note">OCR confidence below threshold. Text extraction may be unreliable.</p>
+                <div id="lowconf-pages" class="page-list"></div>
+            </section>
+
+            <section id="report-unreadable" class="report-section hidden">
+                <h2>Unreadable Pages</h2>
+                <div id="unreadable-warning" class="warning-box"></div>
+                <div id="unreadable-pages" class="page-list"></div>
+            </section>
+
+            <section id="report-clean" class="report-section">
+                <h2>Clean Pages</h2>
+                <div id="clean-pages" class="page-list"></div>
+            </section>
+
+            <section id="report-meta" class="report-section">
+                <h2>Details</h2>
+                <div class="meta-grid">
+                    <span class="meta-label">Redactions applied</span>
+                    <span id="meta-redactions" class="meta-value"></span>
+                    <span class="meta-label">Deep verify</span>
+                    <span id="meta-deepverify" class="meta-value"></span>
+                    <span class="meta-label">Language</span>
+                    <span id="meta-language" class="meta-value"></span>
+                    <span class="meta-label">Confidence threshold</span>
+                    <span id="meta-threshold" class="meta-value"></span>
+                    <span class="meta-label">Timestamp</span>
+                    <span id="meta-timestamp" class="meta-value"></span>
+                </div>
+            </section>
+        </main>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>
