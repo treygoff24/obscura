@@ -1,6 +1,7 @@
 """Tests for CLI entrypoint."""
 
 import json
+import os
 import subprocess
 import sys
 
@@ -133,6 +134,7 @@ class TestCli:
             [sys.executable, "-m", "obscura"],
             capture_output=True,
             text=True,
+            env={**os.environ, "OBSCURA_CLI_ONLY": "1"},
         )
 
         assert result.returncode != 0 or "usage" in result.stderr.lower() or "usage" in result.stdout.lower()

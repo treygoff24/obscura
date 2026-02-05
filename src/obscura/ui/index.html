@@ -15,7 +15,14 @@
             <button id="new-project-btn">New Project</button>
         </header>
         <main id="project-list">
-            <p class="empty-state">Loading projects...</p>
+            <div id="root-prompt" class="root-prompt hidden">
+                <h2>Select a Project Folder</h2>
+                <p>Choose where Obscura will store your project folders.</p>
+                <button id="select-root-btn">Choose Folder</button>
+            </div>
+            <div id="project-list-body">
+                <p class="empty-state">Loading projects...</p>
+            </div>
         </main>
     </div>
 
@@ -35,13 +42,20 @@
                 </div>
                 <textarea id="keywords-editor" placeholder="One keyword per line&#10;&#10;Prefix matching: investor*&#10;Regex: regex:\binvestor\b" spellcheck="false"></textarea>
                 <button id="save-keywords-btn">Save Keywords</button>
+                <div id="keyword-errors" class="validation-error hidden"></div>
             </section>
 
             <!-- Center: File List -->
             <section class="panel panel-files">
                 <div class="panel-header">
                     <h2>Files</h2>
-                    <span id="file-count" class="header-count"></span>
+                    <div class="panel-actions">
+                        <button id="add-files-btn">Add Files</button>
+                        <span id="file-count" class="header-count"></span>
+                    </div>
+                </div>
+                <div id="file-drop" class="file-drop">
+                    Drag and drop PDFs here
                 </div>
                 <div id="file-list">
                     <p class="empty-state">Run redaction to see file results.</p>
@@ -55,6 +69,15 @@
                 </div>
                 <div class="controls-body">
                     <button id="run-btn" class="btn-run">Run Redaction</button>
+                    <label class="select-row">
+                        <span>OCR Language</span>
+                        <select id="language-select">
+                            <option value="eng" selected>English (eng)</option>
+                            <option value="spa">Spanish (spa)</option>
+                            <option value="eng+spa">English + Spanish (eng+spa)</option>
+                        </select>
+                    </label>
+                    <p class="helper-text">Mixed-language mode may reduce OCR accuracy on single-language documents.</p>
                     <label class="checkbox-row">
                         <input type="checkbox" id="deep-verify-check">
                         <span>Deep Verify</span>

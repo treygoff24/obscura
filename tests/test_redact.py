@@ -45,6 +45,37 @@ class TestRedactPdf:
         doc.close()
         assert "confidential" not in text.lower()
 
+    def test_case_insensitive_redaction(self, tmp_dir):
+        input_path = _create_pdf(
+            tmp_dir / "input.pdf",
+            ["This document is CONFIDENTIAL."],
+        )
+        output_path = tmp_dir / "output.pdf"
+        keywords = _make_keywords(tmp_dir, ["confidential"])
+
+        redact_pdf(input_path, output_path, keywords)
+
+        doc = fitz.open(str(output_path))
+        text = doc[0].get_text()
+        doc.close()
+        assert "confidential" not in text.lower()
+
+    def test_prefix_redacts_full_token(self, tmp_dir):
+        input_path = _create_pdf(
+            tmp_dir / "input.pdf",
+            ["The investor-relations team met today."],
+        )
+        output_path = tmp_dir / "output.pdf"
+        keywords = _make_keywords(tmp_dir, ["investor*"])
+
+        redact_pdf(input_path, output_path, keywords)
+
+        doc = fitz.open(str(output_path))
+        text = doc[0].get_text().lower()
+        doc.close()
+        assert "investor" not in text
+        assert "relations" not in text
+
     def test_text_removed_from_content_stream(self, tmp_dir):
         """Regression: verify apply_redactions removes text, not just overlays."""
         input_path = _create_pdf(

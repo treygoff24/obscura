@@ -51,6 +51,7 @@ class TestRunProject:
         assert "files" in report_data
         assert len(report_data["files"]) == 1
         assert report_data["files"][0]["file"] == "doc1.pdf"
+        assert "redactions_applied" in report_data["files"][0]
 
     def test_redacted_text_not_in_output(self, tmp_dir):
         project = create_project(tmp_dir, "Test")
@@ -154,3 +155,4 @@ class TestRunProject:
         assert "project_name" in report_data
         assert report_data["settings"]["language"] == "eng"
         assert "keywords_hash" in report_data["settings"]
+        assert "redactions_applied" in report_data["files"][0]

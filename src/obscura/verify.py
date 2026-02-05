@@ -20,6 +20,7 @@ class VerificationReport:
     file: str
     status: str  # "clean", "needs_review", "unreadable"
     source_hash: str
+    output_hash: str
     residual_matches: list[dict]
     low_confidence_pages: list[int]
     unreadable_pages: list[int]
@@ -78,6 +79,7 @@ def verify_pdf(
     deep_verify: bool = False,
     deep_verify_dpi: int = 300,
     verbose: bool = False,
+    source_hash: str | None = None,
 ) -> VerificationReport:
     """Run verification checks on a PDF.
 
@@ -93,7 +95,9 @@ def verify_pdf(
     Returns:
         VerificationReport with findings.
     """
-    source_hash = _file_hash(pdf_path)
+    if source_hash is None:
+        source_hash = _file_hash(pdf_path)
+    output_hash = _file_hash(pdf_path)
     doc = fitz.open(str(pdf_path))
 
     residual_matches: list[dict] = []
@@ -163,7 +167,9 @@ def verify_pdf(
 
     doc.close()
 
-    if residual_matches or low_confidence_pages or unreadable_pages:
+    if unreadable_pages:
+        status = "unreadable"
+    elif residual_matches or low_confidence_pages:
         status = "needs_review"
     else:
         status = "clean"
@@ -172,6 +178,7 @@ def verify_pdf(
         file=pdf_path.name,
         status=status,
         source_hash=source_hash,
+        output_hash=output_hash,
         residual_matches=residual_matches,
         low_confidence_pages=low_confidence_pages,
         unreadable_pages=unreadable_pages,

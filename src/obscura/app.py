@@ -7,32 +7,7 @@ import pathlib
 import webview
 
 from obscura.api import ObscuraAPI
-from obscura.config import load_config, save_config, AppConfig
-
-
-def _get_project_root() -> pathlib.Path:
-    default_dir = pathlib.Path.home() / "Obscura"
-    config = load_config(config_dir=default_dir)
-
-    if config.project_root:
-        root = pathlib.Path(config.project_root)
-        if root.exists():
-            return root
-
-    result = webview.windows[0].create_file_dialog(
-        webview.FOLDER_DIALOG,
-        directory=str(pathlib.Path.home()),
-    )
-
-    if result and result[0]:
-        chosen = pathlib.Path(result[0])
-    else:
-        chosen = default_dir
-
-    chosen.mkdir(parents=True, exist_ok=True)
-    config = AppConfig(project_root=str(chosen), config_dir=chosen)
-    save_config(config)
-    return chosen
+from obscura.config import default_config_dir, load_config
 
 
 def launch() -> None:
@@ -40,13 +15,13 @@ def launch() -> None:
     html_dir = pathlib.Path(__file__).parent / "ui"
     index_html = html_dir / "index.html"
 
-    default_root = pathlib.Path.home() / "Obscura"
-    default_root.mkdir(parents=True, exist_ok=True)
+    config_dir = default_config_dir()
+    config = load_config(config_dir=config_dir)
+    project_root = pathlib.Path(config.project_root) if config.project_root else None
+    if project_root and not project_root.exists():
+        project_root = None
 
-    config = load_config(config_dir=default_root)
-    project_root = pathlib.Path(config.project_root) if config.project_root else default_root
-
-    api = ObscuraAPI(project_root=project_root)
+    api = ObscuraAPI(project_root=project_root, config_dir=config_dir)
 
     window = webview.create_window(
         "Obscura",
@@ -56,5 +31,6 @@ def launch() -> None:
         height=800,
         min_size=(800, 600),
     )
+    api.attach_window(window)
 
     webview.start()

@@ -6,6 +6,7 @@
     let currentProject = null;
     let currentReport = null;
     let currentFileName = null;
+    let keywordSaveTimer = null;
 
     /* --- DOM refs --- */
 
@@ -17,6 +18,9 @@
 
     const el = {
         projectList: document.getElementById("project-list"),
+        projectListBody: document.getElementById("project-list-body"),
+        rootPrompt: document.getElementById("root-prompt"),
+        selectRootBtn: document.getElementById("select-root-btn"),
         newProjectBtn: document.getElementById("new-project-btn"),
         backToProjects: document.getElementById("back-to-projects"),
         workspaceTitle: document.getElementById("workspace-title"),
@@ -24,9 +28,13 @@
         keywordsEditor: document.getElementById("keywords-editor"),
         saveKeywordsBtn: document.getElementById("save-keywords-btn"),
         saveIndicator: document.getElementById("save-indicator"),
+        keywordErrors: document.getElementById("keyword-errors"),
         fileList: document.getElementById("file-list"),
         fileCount: document.getElementById("file-count"),
+        addFilesBtn: document.getElementById("add-files-btn"),
+        fileDrop: document.getElementById("file-drop"),
         runBtn: document.getElementById("run-btn"),
+        languageSelect: document.getElementById("language-select"),
         deepVerifyCheck: document.getElementById("deep-verify-check"),
         dpiRow: document.getElementById("dpi-row"),
         dpiSelect: document.getElementById("dpi-select"),
@@ -91,18 +99,26 @@
 
     function statusLabel(status) {
         if (!status) return "none";
+        if (status === "not_run") return "not run";
         return status.replace(/_/g, " ");
     }
 
     /* --- Screen 1: Project List --- */
 
     async function loadProjects() {
-        el.projectList.innerHTML = '<p class="empty-state">Loading projects...</p>';
+        el.projectListBody.innerHTML = '<p class="empty-state">Loading projects...</p>';
         try {
             var result = await window.pywebview.api.list_projects();
-            var projects = JSON.parse(result);
+            var data = JSON.parse(result);
+            var projects = data.projects || [];
+            if (data.needs_root) {
+                el.projectListBody.innerHTML = "";
+                el.rootPrompt.classList.remove("hidden");
+                return;
+            }
+            el.rootPrompt.classList.add("hidden");
             if (projects.length === 0) {
-                el.projectList.innerHTML =
+                el.projectListBody.innerHTML =
                     '<p class="empty-state">No projects yet. Click "New Project" to get started.</p>';
                 return;
             }
@@ -120,19 +136,30 @@
                 card.addEventListener("click", function () { openProject(p.name, p.language); });
                 grid.appendChild(card);
             });
-            el.projectList.innerHTML = "";
-            el.projectList.appendChild(grid);
+            el.projectListBody.innerHTML = "";
+            el.projectListBody.appendChild(grid);
         } catch (e) {
-            el.projectList.innerHTML =
+            el.projectListBody.innerHTML =
                 '<p class="empty-state">Error loading projects.</p>';
         }
     }
 
+    el.selectRootBtn.addEventListener("click", async function () {
+        try {
+            await window.pywebview.api.select_project_root();
+            await loadProjects();
+        } catch (_) {
+            alert("Failed to select project folder.");
+        }
+    });
+
     el.newProjectBtn.addEventListener("click", async function () {
         var name = prompt("Project name:");
         if (!name || !name.trim()) return;
+        var language = prompt("OCR language (eng, spa, eng+spa):", "eng") || "eng";
+        language = language.trim() || "eng";
         try {
-            await window.pywebview.api.create_project(name.trim());
+            await window.pywebview.api.create_project(name.trim(), language);
             await loadProjects();
         } catch (e) {
             alert("Failed to create project: " + e.message);
@@ -150,7 +177,10 @@
         el.runSpinner.classList.add("hidden");
         el.runBtn.disabled = false;
         showScreen("workspace");
-        await Promise.all([loadKeywords(), loadReport()]);
+        await loadProjectSettings();
+        await loadKeywords();
+        await loadReport();
+        await loadFiles();
     }
 
     el.backToProjects.addEventListener("click", function () {
@@ -166,46 +196,128 @@
         try {
             var text = await window.pywebview.api.get_keywords(currentProject);
             el.keywordsEditor.value = text;
+            await validateKeywords(text);
         } catch (_) {
             el.keywordsEditor.value = "";
         }
     }
 
+    async function loadProjectSettings() {
+        try {
+            var result = await window.pywebview.api.get_project_settings(currentProject);
+            var settings = JSON.parse(result);
+            if (settings.language) {
+                el.languageSelect.value = settings.language;
+                el.workspaceLanguage.textContent = settings.language;
+            }
+        } catch (_) {
+            // leave defaults
+        }
+    }
+
+    el.languageSelect.addEventListener("change", async function () {
+        if (!currentProject) return;
+        try {
+            var result = await window.pywebview.api.update_project_settings(
+                currentProject,
+                el.languageSelect.value,
+                null
+            );
+            var settings = JSON.parse(result);
+            el.workspaceLanguage.textContent = settings.language;
+        } catch (_) {
+            alert("Failed to update language.");
+        }
+    });
+
     el.saveKeywordsBtn.addEventListener("click", async function () {
+        await saveKeywords();
+    });
+
+    el.keywordsEditor.addEventListener("input", function () {
+        if (keywordSaveTimer) {
+            clearTimeout(keywordSaveTimer);
+        }
+        el.saveIndicator.textContent = "Editing...";
+        el.saveIndicator.className = "save-indicator";
+        keywordSaveTimer = setTimeout(function () {
+            saveKeywords(true);
+        }, 600);
+    });
+
+    async function validateKeywords(content) {
+        try {
+            var result = await window.pywebview.api.validate_keywords(content);
+            var data = JSON.parse(result);
+            if (!data.valid) {
+                var message = data.errors.map(function (e) {
+                    return "Line " + e.line + ": " + esc(e.error);
+                }).join("<br>");
+                el.keywordErrors.innerHTML = message;
+                el.keywordErrors.classList.remove("hidden");
+                return false;
+            }
+            el.keywordErrors.classList.add("hidden");
+            el.keywordErrors.innerHTML = "";
+            return true;
+        } catch (_) {
+            return true;
+        }
+    }
+
+    async function saveKeywords(isAuto) {
+        var content = el.keywordsEditor.value;
+        var valid = await validateKeywords(content);
+        if (!valid) {
+            el.saveIndicator.textContent = "Invalid";
+            el.saveIndicator.className = "save-indicator";
+            return;
+        }
         el.saveIndicator.textContent = "Saving...";
         el.saveIndicator.className = "save-indicator saving";
         try {
-            await window.pywebview.api.save_keywords(currentProject, el.keywordsEditor.value);
+            await window.pywebview.api.save_keywords(currentProject, content);
             el.saveIndicator.textContent = "Saved";
             el.saveIndicator.className = "save-indicator saved";
-            setTimeout(function () { el.saveIndicator.textContent = ""; }, 2000);
+            if (isAuto) {
+                setTimeout(function () { el.saveIndicator.textContent = ""; }, 1500);
+            } else {
+                setTimeout(function () { el.saveIndicator.textContent = ""; }, 2000);
+            }
         } catch (e) {
             el.saveIndicator.textContent = "Error";
             el.saveIndicator.className = "save-indicator";
         }
-    });
+    }
 
     /* Report / File List */
 
     async function loadReport() {
-        el.fileList.innerHTML = '<p class="empty-state">Loading...</p>';
         try {
             var result = await window.pywebview.api.get_latest_report(currentProject);
             var report = JSON.parse(result);
             currentReport = report;
-            renderFileList(report);
         } catch (_) {
             currentReport = null;
+        }
+    }
+
+    async function loadFiles() {
+        el.fileList.innerHTML = '<p class="empty-state">Loading...</p>';
+        try {
+            var result = await window.pywebview.api.list_files(currentProject);
+            var data = JSON.parse(result);
+            renderFileList(data.files || []);
+        } catch (_) {
             el.fileList.innerHTML =
                 '<p class="empty-state">Run redaction to see file results.</p>';
         }
     }
 
-    function renderFileList(report) {
-        var files = report.files || [];
+    function renderFileList(files) {
         if (files.length === 0) {
             el.fileList.innerHTML =
-                '<p class="empty-state">Run redaction to see file results.</p>';
+                '<p class="empty-state">No input files yet. Add PDFs to get started.</p>';
             el.fileCount.textContent = "";
             return;
         }
@@ -224,10 +336,62 @@
             row.innerHTML =
                 '<span class="file-name">' + esc(f.file) + "</span>" +
                 redactionsText + pill;
-            row.addEventListener("click", function () { openFileReport(f); });
+            row.addEventListener("click", function () {
+                var reportEntry = findReportEntry(f.file);
+                openFileReport(reportEntry || f);
+            });
             el.fileList.appendChild(row);
         });
     }
+
+    function findReportEntry(filename) {
+        if (!currentReport || !currentReport.files) return null;
+        for (var i = 0; i < currentReport.files.length; i++) {
+            if (currentReport.files[i].file === filename) {
+                return currentReport.files[i];
+            }
+        }
+        return null;
+    }
+
+    /* File ingestion */
+
+    el.addFilesBtn.addEventListener("click", async function () {
+        if (!currentProject) return;
+        try {
+            await window.pywebview.api.add_files(currentProject);
+            await loadFiles();
+        } catch (e) {
+            alert("Failed to add files.");
+        }
+    });
+
+    el.fileDrop.addEventListener("dragover", function (e) {
+        e.preventDefault();
+        el.fileDrop.classList.add("active");
+    });
+
+    el.fileDrop.addEventListener("dragleave", function () {
+        el.fileDrop.classList.remove("active");
+    });
+
+    el.fileDrop.addEventListener("drop", async function (e) {
+        e.preventDefault();
+        el.fileDrop.classList.remove("active");
+        if (!currentProject) return;
+        var files = Array.from(e.dataTransfer.files || []);
+        var paths = files.map(function (f) { return f.path; }).filter(Boolean);
+        try {
+            if (paths.length > 0) {
+                await window.pywebview.api.add_files(currentProject, paths);
+            } else {
+                await window.pywebview.api.add_files(currentProject);
+            }
+            await loadFiles();
+        } catch (err) {
+            alert("Failed to add files.");
+        }
+    });
 
     /* Deep Verify toggle */
 
@@ -251,6 +415,7 @@
             el.sumReview.textContent = summary.files_needing_review;
             el.runSummary.classList.remove("hidden");
             await loadReport();
+            await loadFiles();
         } catch (e) {
             alert("Run failed: " + (e.message || e));
         } finally {

@@ -107,15 +107,21 @@ def run_project(
                     deep_verify=deep_verify,
                     deep_verify_dpi=deep_verify_dpi,
                     verbose=verbose,
+                    source_hash=redaction_result.source_hash,
                 )
-                if report.status == "needs_review":
+                if report.status in ("needs_review", "unreadable"):
                     files_needing_review += 1
-                all_reports.append(report.to_dict())
+                report_dict = report.to_dict()
+                report_dict["redactions_applied"] = redaction_result.redaction_count
+                report_dict["ocr_used"] = redaction_result.ocr_used
+                report_dict["missed_keywords"] = redaction_result.missed_keywords
+                all_reports.append(report_dict)
             else:
                 all_reports.append({
                     "file": pdf_path.name,
                     "status": redaction_result.status,
                     "source_hash": redaction_result.source_hash,
+                    "redactions_applied": 0,
                 })
                 if redaction_result.status in ("password_protected", "corrupt"):
                     files_needing_review += 1

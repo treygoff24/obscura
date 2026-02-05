@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import pathlib
+import sys
 
 
 @dataclasses.dataclass
@@ -21,6 +23,16 @@ class AppConfig:
 
 def _config_path(config_dir: pathlib.Path) -> pathlib.Path:
     return config_dir / ".config.json"
+
+
+def default_config_dir() -> pathlib.Path:
+    """Return the platform-appropriate config directory."""
+    if sys.platform == "darwin":
+        return pathlib.Path.home() / "Library" / "Application Support" / "Obscura"
+    if sys.platform.startswith("win"):
+        base = os.environ.get("APPDATA") or str(pathlib.Path.home())
+        return pathlib.Path(base) / "Obscura"
+    return pathlib.Path.home() / ".config" / "obscura"
 
 
 def save_config(config: AppConfig) -> None:

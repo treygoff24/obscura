@@ -1,10 +1,11 @@
 """Allow running as `python -m obscura`."""
 
+import os
 import sys
 
 
 def main():
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 1 or os.environ.get("OBSCURA_CLI_ONLY") == "1":
         from obscura.cli import main as cli_main
         cli_main()
     else:

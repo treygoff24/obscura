@@ -1,11 +1,11 @@
 """PDF redaction engine — stateless, path-agnostic.
 
-Uses page.search_for() per keyword directly to get bounding rectangles,
-rather than extract->match->re-search. This avoids fragility from divergent
-text extraction paths and ensures accurate rectangle placement.
+Uses word-level text extraction to map keyword matches to rectangles
+directly, avoiding fragile extract->match->re-search flows and ensuring
+case-insensitive, whole-word redaction for plain and prefix keywords.
 
-Tracks "redaction coverage" — keywords where no rectangle was found on
-a page are recorded as warnings in the result.
+Tracks "redaction coverage" — keywords where a match was found but no
+rectangle could be mapped are recorded as warnings in the result.
 """
 
 from __future__ import annotations
@@ -17,10 +17,24 @@ import pathlib
 import tempfile
 
 import fitz
+import regex
 
 from obscura.keywords import KeywordSet, _normalize
 
 logger = logging.getLogger(__name__)
+
+
+@dataclasses.dataclass(frozen=True)
+class _WordSpan:
+    rect: fitz.Rect
+    start: int
+    end: int
+
+
+@dataclasses.dataclass(frozen=True)
+class _LineWords:
+    text: str
+    words: list[_WordSpan]
 
 
 @dataclasses.dataclass
@@ -48,46 +62,112 @@ def _file_hash(path: pathlib.Path) -> str:
     return f"sha256:{h.hexdigest()}"
 
 
+def _extract_line_words(
+    page: fitz.Page, textpage: fitz.TextPage | None = None
+) -> list[_LineWords]:
+    """Extract normalized words grouped by line for reliable matching."""
+    words = page.get_text("words", textpage=textpage) or []
+    if not words:
+        return []
+
+    words.sort(key=lambda w: (w[5], w[6], w[7]))
+    grouped: dict[tuple[int, int], list[tuple[str, fitz.Rect]]] = {}
+    for w in words:
+        text = _normalize(str(w[4])).lower()
+        if not text:
+            continue
+        key = (int(w[5]), int(w[6]))
+        grouped.setdefault(key, []).append((text, fitz.Rect(w[:4])))
+
+    lines: list[_LineWords] = []
+    for key in sorted(grouped.keys()):
+        entries = grouped[key]
+        line_text = ""
+        spans: list[_WordSpan] = []
+        for idx, (text, rect) in enumerate(entries):
+            if idx > 0:
+                line_text += " "
+            start = len(line_text)
+            line_text += text
+            end = len(line_text)
+            spans.append(_WordSpan(rect=rect, start=start, end=end))
+        lines.append(_LineWords(text=line_text, words=spans))
+
+    return lines
+
+
+def _rects_for_match(words: list[_WordSpan], start: int, end: int) -> list[fitz.Rect]:
+    rects: list[fitz.Rect] = []
+    for w in words:
+        if w.start < end and w.end > start:
+            rects.append(w.rect)
+    return rects
+
+
 def _search_keywords_on_page(
-    page: fitz.Page, keywords: KeywordSet
+    page: fitz.Page,
+    keywords: KeywordSet,
+    textpage: fitz.TextPage | None = None,
 ) -> tuple[list[tuple[str, fitz.Rect]], list[dict]]:
-    """Search for all keywords on a page using page.search_for() directly.
+    """Search for all keywords on a page using word-level extraction.
 
     Returns:
         Tuple of (hits, misses) where hits are (keyword, rect) pairs
         and misses are keywords that matched text but got no rectangle.
     """
+
     hits: list[tuple[str, fitz.Rect]] = []
     misses: list[dict] = []
+    seen: set[tuple[str, float, float, float, float]] = set()
 
-    for kw in keywords.plain_keywords:
-        rects = page.search_for(kw)
-        if rects:
-            for rect in rects:
-                hits.append((kw, rect))
-        else:
-            text = _normalize(page.get_text()).lower()
-            if kw in text:
-                misses.append({"keyword": kw, "page": page.number + 1})
+    lines = _extract_line_words(page, textpage=textpage)
+    if not lines:
+        return hits, misses
 
-    for prefix in keywords.prefix_keywords:
-        rects = page.search_for(prefix)
+    plain_patterns = [
+        (kw, regex.compile(r"\b" + regex.escape(kw) + r"\b", regex.IGNORECASE))
+        for kw in keywords.plain_keywords
+    ]
+    prefix_patterns = [
+        (prefix, regex.compile(r"\b" + regex.escape(prefix) + r"[\w-]*", regex.IGNORECASE))
+        for prefix in keywords.prefix_keywords
+    ]
+
+    def add_rects(label: str, rects: list[fitz.Rect]) -> None:
         for rect in rects:
-            hits.append((f"{prefix}*", rect))
+            key = (label, rect.x0, rect.y0, rect.x1, rect.y1)
+            if key in seen:
+                continue
+            seen.add(key)
+            hits.append((label, rect))
 
-    text = _normalize(page.get_text())
-    for pattern_str, compiled in keywords.regex_patterns:
-        import regex
-        for m in compiled.finditer(text, timeout=5):
-            rects = page.search_for(m.group())
-            if rects:
-                for rect in rects:
-                    hits.append((f"regex:{pattern_str}", rect))
-            else:
-                misses.append({
-                    "keyword": f"regex:{pattern_str}",
-                    "page": page.number + 1,
-                })
+    for line in lines:
+        for kw, pattern in plain_patterns:
+            for m in pattern.finditer(line.text, timeout=5):
+                rects = _rects_for_match(line.words, m.start(), m.end())
+                if rects:
+                    add_rects(kw, rects)
+                else:
+                    misses.append({"keyword": kw, "page": page.number + 1})
+
+        for prefix, pattern in prefix_patterns:
+            for m in pattern.finditer(line.text, timeout=5):
+                rects = _rects_for_match(line.words, m.start(), m.end())
+                if rects:
+                    add_rects(f"{prefix}*", rects)
+                else:
+                    misses.append({"keyword": f"{prefix}*", "page": page.number + 1})
+
+        for pattern_str, compiled in keywords.regex_patterns:
+            for m in compiled.finditer(line.text, timeout=5):
+                rects = _rects_for_match(line.words, m.start(), m.end())
+                if rects:
+                    add_rects(f"regex:{pattern_str}", rects)
+                else:
+                    misses.append({
+                        "keyword": f"regex:{pattern_str}",
+                        "page": page.number + 1,
+                    })
 
     return hits, misses
 
@@ -100,8 +180,8 @@ def redact_pdf(
 ) -> RedactionResult:
     """Redact keywords from a PDF file.
 
-    Uses page.search_for() per keyword to get accurate bounding rectangles
-    directly from PyMuPDF, avoiding fragile extract->match->re-search patterns.
+    Uses word-level text extraction with regex matching to map keywords
+    to bounding rectangles for case-insensitive, whole-word redaction.
 
     Args:
         input_path: Path to the source PDF.
@@ -150,17 +230,18 @@ def redact_pdf(
         page = doc[page_num]
         text = page.get_text()
 
+        textpage = None
         if not text.strip():
             try:
-                page.get_textpage_ocr(language=language, full=True)
-                text = page.get_text()
+                textpage = page.get_textpage_ocr(language=language, full=True)
+                text = page.get_text(textpage=textpage)
                 if text.strip():
                     ocr_used = True
             except Exception:
                 logger.warning("OCR failed on page %d of %s", page_num + 1, input_path.name)
                 continue
 
-        hits, misses = _search_keywords_on_page(page, keywords)
+        hits, misses = _search_keywords_on_page(page, keywords, textpage=textpage)
         all_missed.extend(misses)
 
         if not hits:

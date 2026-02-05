@@ -62,6 +62,7 @@ class TestVerifyPdf:
         assert "engine_version" in d
         assert "keywords_hash" in d
         assert "source_hash" in d
+        assert "output_hash" in d
         assert "confidence_threshold" in d
 
     def test_report_serializable_to_json(self, tmp_dir):
@@ -90,6 +91,7 @@ class TestVerifyPdf:
         report = verify_pdf(pdf_path, keywords, confidence_threshold=70)
 
         assert 1 in report.unreadable_pages
+        assert report.status == "unreadable"
 
     def test_source_hash_included(self, tmp_dir):
         pdf_path = _create_pdf(tmp_dir / "test.pdf", ["Content."])
@@ -98,6 +100,7 @@ class TestVerifyPdf:
         report = verify_pdf(pdf_path, keywords, confidence_threshold=70)
 
         assert report.source_hash.startswith("sha256:")
+        assert report.output_hash.startswith("sha256:")
 
     def test_no_context_in_default_report(self, tmp_dir):
         """Default reports should not include surrounding text context."""
