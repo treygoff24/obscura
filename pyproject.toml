@@ -27,6 +27,16 @@ obscura = "obscura.cli:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = "--cov=obscura --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=75"
+
+[tool.coverage.run]
+source = ["obscura"]
+omit = ["*/ui/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+precision = 1
 
 [tool.setuptools.packages.find]
 where = ["src"]

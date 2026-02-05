@@ -130,3 +130,64 @@ class TestVerifyPdf:
 
         assert isinstance(report.low_confidence_pages, list)
         assert report.low_confidence_pages == []
+
+    def test_ocr_path_records_low_confidence_and_context(self, tmp_dir, monkeypatch):
+        """Force OCR path without relying on Tesseract."""
+        doc = fitz.open()
+        page = doc.new_page()
+        img = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 10, 10), 1)
+        img.set_pixel(5, 5, (255, 0, 0, 255))
+        page.insert_image(fitz.Rect(72, 72, 200, 200), pixmap=img)
+        pdf_path = tmp_dir / "image_only.pdf"
+        doc.save(str(pdf_path))
+        doc.close()
+
+        keywords = _make_keywords(tmp_dir, ["secret"])
+
+        original_get_text = fitz.Page.get_text
+
+        def fake_get_text(self, *args, **kwargs):
+            if args and args[0] == "words" and kwargs.get("textpage") is not None:
+                return [[0, 0, 0, 0, "secret", 0, 0, 0, 50.0]]
+            if kwargs.get("textpage") is not None:
+                return "Secret OCR content."
+            return original_get_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(fitz.Page, "get_textpage_ocr", lambda *_a, **_k: object())
+        monkeypatch.setattr(fitz.Page, "get_text", fake_get_text)
+
+        report = verify_pdf(
+            pdf_path,
+            keywords,
+            confidence_threshold=80,
+            verbose=True,
+        )
+
+        assert report.low_confidence_pages == [1]
+        assert report.status == "needs_review"
+        assert report.residual_matches[0]["keyword"] == "secret"
+        assert "context" in report.residual_matches[0]
+
+    def test_deep_verify_adds_entries(self, tmp_dir, monkeypatch):
+        pdf_path = _create_pdf(tmp_dir / "deep.pdf", ["No secrets here."])
+        keywords = _make_keywords(tmp_dir, ["secret"])
+
+        monkeypatch.setattr(fitz.Page, "get_textpage_ocr", lambda *_a, **_k: object())
+
+        original_get_text = fitz.Page.get_text
+
+        def fake_get_text(self, *args, **kwargs):
+            if args or kwargs:
+                return original_get_text(self, *args, **kwargs)
+            return "secret"
+
+        monkeypatch.setattr(fitz.Page, "get_text", fake_get_text)
+
+        report = verify_pdf(
+            pdf_path,
+            keywords,
+            deep_verify=True,
+        )
+
+        assert report.deep_verify is True
+        assert any(m.get("source") == "deep_verify" for m in report.residual_matches)

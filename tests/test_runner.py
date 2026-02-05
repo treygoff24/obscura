@@ -156,3 +156,22 @@ class TestRunProject:
         assert report_data["settings"]["language"] == "eng"
         assert "keywords_hash" in report_data["settings"]
         assert "redactions_applied" in report_data["files"][0]
+
+    def test_error_during_sanitize_is_recorded(self, tmp_dir, monkeypatch):
+        project = create_project(tmp_dir, "Test")
+        project.keywords_path.write_text("secret\n")
+        _add_pdf_to_project(project, "doc.pdf", ["Secret."])
+
+        def boom(*_args, **_kwargs):
+            raise RuntimeError("sanitize failed")
+
+        monkeypatch.setattr("obscura.runner.sanitize_pdf", boom)
+
+        summary = run_project(project)
+
+        assert summary.files_processed == 1
+        assert summary.files_errored == 1
+
+        report_files = list(project.reports_dir.glob("*.json"))
+        report_data = json.loads(report_files[0].read_text())
+        assert report_data["files"][0]["status"] == "error"

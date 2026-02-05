@@ -239,6 +239,8 @@ class ObscuraAPI:
 
 
 def _resolve_output_file(project: Project, filename: str) -> pathlib.Path | None:
+    if not filename:
+        return None
     candidate = pathlib.Path(filename)
     if candidate.name != filename:
         return None
