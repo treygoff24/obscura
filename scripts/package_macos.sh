@@ -39,12 +39,17 @@ if ! command -v "$PYTHON_BIN" &>/dev/null; then
   exit 1
 fi
 
-for tool in hdiutil ditto codesign; do
+for tool in hdiutil ditto; do
   if ! command -v "$tool" &>/dev/null; then
     echo "Error: Required tool '${tool}' not found on PATH." >&2
     exit 1
   fi
 done
+
+if [[ -n "${OBSCURA_CODESIGN_IDENTITY:-}" ]] && ! command -v codesign &>/dev/null; then
+  echo "Error: codesign not found on PATH but OBSCURA_CODESIGN_IDENTITY is set." >&2
+  exit 1
+fi
 
 if [[ ! -f "$ENTITLEMENTS" ]]; then
   echo "Error: Entitlements file not found at ${ENTITLEMENTS}" >&2

@@ -191,3 +191,50 @@ class TestVerifyPdf:
 
         assert report.deep_verify is True
         assert any(m.get("source") == "deep_verify" for m in report.residual_matches)
+
+    def test_ocr_text_extraction_exception_marks_page_unreadable(self, tmp_dir, monkeypatch):
+        """Regression: post-OCR extraction errors should degrade to unreadable."""
+        doc = fitz.open()
+        page = doc.new_page()
+        img = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 10, 10), 1)
+        img.set_pixel(5, 5, (255, 0, 0, 255))
+        page.insert_image(fitz.Rect(72, 72, 200, 200), pixmap=img)
+        pdf_path = tmp_dir / "image_only_error.pdf"
+        doc.save(str(pdf_path))
+        doc.close()
+
+        keywords = _make_keywords(tmp_dir, ["secret"])
+
+        original_get_text = fitz.Page.get_text
+
+        def fake_get_text(self, *args, **kwargs):
+            if kwargs.get("textpage") is not None:
+                raise RuntimeError("synthetic get_text failure")
+            return original_get_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(fitz.Page, "get_textpage_ocr", lambda *_a, **_k: object())
+        monkeypatch.setattr(fitz.Page, "get_text", fake_get_text)
+
+        report = verify_pdf(pdf_path, keywords, confidence_threshold=70)
+
+        assert report.unreadable_pages == [1]
+        assert report.status == "unreadable"
+
+    def test_deep_verify_text_extraction_exception_is_ignored(self, tmp_dir, monkeypatch):
+        """Deep-verify OCR extraction failures should not crash verification."""
+        pdf_path = _create_pdf(tmp_dir / "deep_error.pdf", ["No secrets here."])
+        keywords = _make_keywords(tmp_dir, ["secret"])
+
+        original_get_text = fitz.Page.get_text
+
+        def fake_get_text(self, *args, **kwargs):
+            if not args and not kwargs and len(self.get_images()) > 0:
+                raise RuntimeError("synthetic deep-verify get_text failure")
+            return original_get_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(fitz.Page, "get_textpage_ocr", lambda *_a, **_k: object())
+        monkeypatch.setattr(fitz.Page, "get_text", fake_get_text)
+
+        report = verify_pdf(pdf_path, keywords, confidence_threshold=70, deep_verify=True)
+
+        assert report.status == "clean"

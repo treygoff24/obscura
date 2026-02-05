@@ -202,3 +202,25 @@ class TestRedactPdf:
 
         assert result.source_hash.startswith("sha256:")
         assert len(result.source_hash) == 71  # "sha256:" + 64 hex chars
+
+    def test_ocr_text_extraction_exception_skips_page(self, tmp_dir, monkeypatch):
+        """Regression: OCR extraction failures should not abort the full file."""
+        input_path = _create_pdf(tmp_dir / "input.pdf", [""])
+        output_path = tmp_dir / "output.pdf"
+        keywords = _make_keywords(tmp_dir, ["secret"])
+
+        original_get_text = fitz.Page.get_text
+
+        def fake_get_text(self, *args, **kwargs):
+            if kwargs.get("textpage") is not None:
+                raise RuntimeError("synthetic get_text failure")
+            return original_get_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(fitz.Page, "get_textpage_ocr", lambda *_a, **_k: object())
+        monkeypatch.setattr(fitz.Page, "get_text", fake_get_text)
+
+        result = redact_pdf(input_path, output_path, keywords)
+
+        assert result.status == "ok"
+        assert result.redaction_count == 0
+        assert output_path.exists()
