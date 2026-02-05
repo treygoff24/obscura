@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import os
 import pathlib
 import shutil
 import tempfile
@@ -88,19 +89,56 @@ FIRE_EVENT_JS = "window.dispatchEvent(new Event('pywebviewready'));"
 DEFAULT_MOCK_JS = MOCK_API_JS + FIRE_EVENT_JS
 
 
-def build_mock_js(**overrides: str) -> str:
+def build_mock_js(*, fire_event: bool = True, **overrides: str) -> str:
     """Build mock JS with selective method overrides applied BEFORE pywebviewready fires.
 
     Each override value should be a JS expression for the method body, e.g.:
         build_mock_js(list_projects='() => Promise.resolve(...)')
     """
     if not overrides:
-        return DEFAULT_MOCK_JS
+        return DEFAULT_MOCK_JS if fire_event else MOCK_API_JS
     parts = [MOCK_API_JS.rstrip()]
     for method, body in overrides.items():
         parts.append(f"window.pywebview.api.{method} = {body};")
-    parts.append(FIRE_EVENT_JS)
+    if fire_event:
+        parts.append(FIRE_EVENT_JS)
     return "\n".join(parts)
+
+
+def _playwright_browser_installed() -> bool:
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception:
+        return False
+    try:
+        with sync_playwright() as p:
+            path = p.chromium.executable_path
+            return bool(path and os.path.exists(path))
+    except Exception:
+        return False
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--ui",
+        action="store_true",
+        default=False,
+        help="Run Playwright UI tests (requires browsers installed).",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    run_ui = config.getoption("--ui") or os.environ.get("OBSCURA_UI") == "1"
+    if run_ui:
+        if _playwright_browser_installed():
+            return
+        reason = "Playwright browsers not installed. Run `python -m playwright install`."
+    else:
+        reason = "UI tests skipped. Pass --ui or set OBSCURA_UI=1."
+    skip_ui = pytest.mark.skip(reason=reason)
+    for item in items:
+        if "ui" in item.keywords:
+            item.add_marker(skip_ui)
 
 
 @pytest.fixture(scope="session")
@@ -117,8 +155,9 @@ def ui_server():
 @pytest.fixture()
 def ui_page(ui_server, page):
     """Navigate to the UI and inject the default mock pywebview bridge."""
-    page.goto(ui_server + "/index.html")
-    page.evaluate(DEFAULT_MOCK_JS)
+    page.add_init_script(build_mock_js(fire_event=False))
+    page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate(FIRE_EVENT_JS)
     page.wait_for_selector(
         ".project-card, .empty-state, .root-prompt:not(.hidden)", timeout=5000
     )
