@@ -45,8 +45,8 @@ def test_shows_project_cards(ui_page):
     cards = ui_page.locator(".project-card")
     cards.first.wait_for(state="visible", timeout=3000)
     assert cards.count() == 2
-    assert "Matter A" in cards.nth(0).locator("h2").text_content()
-    assert "Matter B" in cards.nth(1).locator("h2").text_content()
+    assert "Matter A" in cards.nth(0).locator(".card-title").text_content()
+    assert "Matter B" in cards.nth(1).locator(".card-title").text_content()
     assert cards.nth(0).evaluate("el => el.tagName") == "BUTTON"
 
 
@@ -456,8 +456,8 @@ def test_get_started_continues_on_root_error(ui_server, page):
     assert projects.is_visible()
 
 
-def test_create_project_error_alert(ui_server, page):
-    """Create project failures surface via alert."""
+def test_create_project_error_toast(ui_server, page):
+    """Create project failures surface via error toast."""
     mock = build_mock_js(
         create_project='() => Promise.reject(new Error("boom"))',
         fire_event=False,
@@ -471,16 +471,14 @@ def test_create_project_error_alert(ui_server, page):
     page.evaluate(FIRE_EVENT_JS)
     page.wait_for_selector(".project-card", timeout=3000)
 
-    messages = []
-    page.on("dialog", lambda d: (messages.append(d.message), d.dismiss()))
-
     # Open modal, fill name, click Create
     page.click("#new-project-btn")
     page.wait_for_selector("#modal-new-project:not(.hidden)", timeout=3000)
     page.fill("#modal-project-name", "Bad Project")
     page.click("#modal-create-btn")
-    page.wait_for_function("true", timeout=2000)
-    assert any("Failed to create project" in m for m in messages)
+    toast = page.locator(".toast.toast-error")
+    toast.wait_for(state="visible", timeout=5000)
+    assert "Failed to create project" in toast.text_content()
 
 
 def test_modal_focus_trap_and_escape(ui_server, page):
@@ -538,7 +536,10 @@ def test_toast_exit_class_applied(ui_page):
     ui_page.locator("#run-btn").click()
     toast = ui_page.locator(".toast")
     toast.wait_for(state="visible", timeout=2000)
-    ui_page.wait_for_timeout(3050)
+    ui_page.wait_for_function(
+        "document.querySelector('.toast')?.classList.contains('toast-exit')",
+        timeout=10000,
+    )
     assert toast.evaluate("el => el.classList.contains('toast-exit')")
 
 
@@ -644,8 +645,8 @@ def test_save_keywords_error_indicator(ui_server, page):
     assert page.locator("#save-indicator").text_content() == "Error"
 
 
-def test_run_project_error_alert(ui_server, page):
-    """Run failures surface via alert."""
+def test_run_project_error_toast(ui_server, page):
+    """Run failures surface via error toast."""
     mock = build_mock_js(
         run_project='() => Promise.reject(new Error("run failed"))',
         fire_event=False,
@@ -665,15 +666,14 @@ def test_run_project_error_alert(ui_server, page):
     page.click("[data-step='run']")
     page.wait_for_selector("#step-run.active", timeout=3000)
 
-    messages = []
-    page.on("dialog", lambda d: (messages.append(d.message), d.dismiss()))
     page.click("#run-btn")
-    page.wait_for_function("true", timeout=2000)
-    assert any("Run failed" in m for m in messages)
+    toast = page.locator(".toast.toast-error")
+    toast.wait_for(state="visible", timeout=5000)
+    assert "Run failed" in toast.text_content()
 
 
-def test_add_files_error_alert(ui_server, page):
-    """Add files failure shows alert."""
+def test_add_files_error_toast(ui_server, page):
+    """Add files failure shows error toast."""
     mock = build_mock_js(
         add_files='() => Promise.reject(new Error("fail add"))',
         fire_event=False,
@@ -693,11 +693,10 @@ def test_add_files_error_alert(ui_server, page):
     page.click("[data-step='files']")
     page.wait_for_selector("#step-files.active", timeout=3000)
 
-    messages = []
-    page.on("dialog", lambda d: (messages.append(d.message), d.dismiss()))
     page.click("#add-files-btn")
-    page.wait_for_function("true", timeout=2000)
-    assert any("Failed to add files" in m for m in messages)
+    toast = page.locator(".toast.toast-error")
+    toast.wait_for(state="visible", timeout=5000)
+    assert "Failed to add files" in toast.text_content()
 
 
 def test_no_files_empty_state(ui_server, page):
@@ -811,7 +810,7 @@ def test_file_report_fallback_when_missing_report(ui_server, page):
 
 
 def test_open_preview_and_reveal_errors(ui_server, page):
-    """Preview/reveal failures surface via alerts."""
+    """Preview/reveal failures surface via error toasts."""
     mock = build_mock_js(
         open_in_preview='() => Promise.reject(new Error("open fail"))',
         reveal_in_finder='() => Promise.reject(new Error("reveal fail"))',
@@ -832,16 +831,18 @@ def test_open_preview_and_reveal_errors(ui_server, page):
     page.locator(".file-row").first.click()
     page.wait_for_selector("#screen-report.active", timeout=3000)
 
-    messages = []
-    page.on("dialog", lambda d: (messages.append(d.message), d.dismiss()))
-
     page.click("#open-preview-btn")
-    page.wait_for_function("true", timeout=1000)
-    assert any("Could not open file" in m for m in messages)
+    toast = page.locator(".toast.toast-error")
+    toast.first.wait_for(state="visible", timeout=5000)
+    assert "Could not open file" in toast.first.text_content()
 
     page.click("#reveal-finder-btn")
-    page.wait_for_function("true", timeout=1000)
-    assert any("Could not reveal file" in m for m in messages)
+    page.wait_for_function(
+        "document.querySelectorAll('.toast.toast-error').length >= 2",
+        timeout=5000,
+    )
+    toasts = page.locator(".toast.toast-error")
+    assert "Could not reveal file" in toasts.nth(1).text_content()
 
 
 def test_keyboard_run_triggers(ui_page):
@@ -876,3 +877,147 @@ def test_keyboard_back_to_projects(ui_page):
     ui_page.locator("#back-to-projects").focus()
     ui_page.keyboard.press("Enter")
     ui_page.wait_for_selector("#screen-projects.active", timeout=3000)
+
+
+def test_toast_close_button_removes_toast(ui_page):
+    """Clicking the toast close button removes the toast."""
+    ui_page.locator(".project-card").first.click()
+    ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    ui_page.click("[data-step='run']")
+    ui_page.wait_for_selector("#step-run.active", timeout=3000)
+
+    ui_page.evaluate("""
+        window.pywebview.api.run_project = (name, deep, dpi) => {
+            return Promise.resolve(JSON.stringify({
+                files_processed: 1, total_redactions: 0,
+                files_needing_review: 0, report_path: null
+            }));
+        };
+    """)
+
+    ui_page.locator("#run-btn").click()
+    toast = ui_page.locator(".toast")
+    toast.wait_for(state="visible", timeout=2000)
+    ui_page.locator(".toast-close").click()
+    ui_page.wait_for_function(
+        "document.querySelectorAll('.toast').length === 0",
+        timeout=3000,
+    )
+    assert ui_page.locator(".toast").count() == 0
+
+
+def test_stepper_prev_next_navigation(ui_page):
+    """Stepper prev/next buttons navigate between steps."""
+    ui_page.locator(".project-card").first.click()
+    ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+
+    # Start on keywords step
+    assert ui_page.locator("#step-keywords").evaluate("el => el.classList.contains('active')")
+
+    # Next: keywords -> files
+    ui_page.click("#step-next-files")
+    ui_page.wait_for_selector("#step-files.active", timeout=3000)
+    assert ui_page.locator("#step-files").evaluate("el => el.classList.contains('active')")
+
+    # Prev: files -> keywords
+    ui_page.click("#step-prev-keywords")
+    ui_page.wait_for_selector("#step-keywords.active", timeout=3000)
+    assert ui_page.locator("#step-keywords").evaluate("el => el.classList.contains('active')")
+
+    # Next: keywords -> files -> run
+    ui_page.click("#step-next-files")
+    ui_page.wait_for_selector("#step-files.active", timeout=3000)
+    ui_page.click("#step-next-run")
+    ui_page.wait_for_selector("#step-run.active", timeout=3000)
+    assert ui_page.locator("#step-run").evaluate("el => el.classList.contains('active')")
+
+    # Prev: run -> files
+    ui_page.click("#step-prev-files")
+    ui_page.wait_for_selector("#step-files.active", timeout=3000)
+    assert ui_page.locator("#step-files").evaluate("el => el.classList.contains('active')")
+
+
+def test_modal_overlay_click_closes(ui_server, page):
+    """Clicking the modal overlay (not the modal itself) closes the modal."""
+    mock = build_mock_js(fire_event=False)
+    page.add_init_script(mock)
+    page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
+    page.evaluate(FIRE_EVENT_JS)
+    page.wait_for_selector(".project-card", timeout=3000)
+
+    page.click("#new-project-btn")
+    page.wait_for_selector("#modal-new-project:not(.hidden)", timeout=3000)
+    assert page.locator("#modal-overlay").get_attribute("aria-hidden") == "false"
+
+    # Click the overlay itself (top-left corner, outside the modal)
+    page.locator("#modal-overlay").click(position={"x": 5, "y": 5})
+    page.wait_for_selector("#modal-new-project.hidden", timeout=3000)
+    assert page.locator("#modal-overlay").get_attribute("aria-hidden") == "true"
+
+
+def test_empty_project_name_no_submit(ui_server, page):
+    """Clicking Create with an empty name does nothing (modal stays open)."""
+    mock = build_mock_js(fire_event=False) + """
+    window._createCalled = false;
+    window.pywebview.api.create_project = function() {
+        window._createCalled = true;
+        return Promise.resolve(JSON.stringify({name: "X", path: "/tmp/X"}));
+    };
+    """
+    page.add_init_script(mock)
+    page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
+    page.evaluate(FIRE_EVENT_JS)
+    page.wait_for_selector(".project-card", timeout=3000)
+
+    page.click("#new-project-btn")
+    page.wait_for_selector("#modal-new-project:not(.hidden)", timeout=3000)
+
+    # Leave name empty and click Create
+    page.click("#modal-create-btn")
+    # Modal should remain open (or at least create_project should not be called)
+    page.wait_for_function("true", timeout=500)
+    assert page.evaluate("window._createCalled") is False
+
+
+def test_focus_moves_to_heading_on_screen_transition(ui_page):
+    """After navigating to a new screen, focus moves to the screen's h1."""
+    ui_page.locator(".project-card").first.click()
+    ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    ui_page.wait_for_function(
+        "document.activeElement && document.activeElement.id === 'workspace-title'",
+        timeout=3000,
+    )
+    assert ui_page.evaluate("document.activeElement.id") == "workspace-title"
+
+
+def test_tab_aria_selected_state(ui_page):
+    """Active step tab has aria-selected=true, inactive tabs have false."""
+    ui_page.locator(".project-card").first.click()
+    ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+
+    # Keywords tab is active by default
+    assert ui_page.locator("#tab-keywords").get_attribute("aria-selected") == "true"
+    assert ui_page.locator("#tab-files").get_attribute("aria-selected") == "false"
+    assert ui_page.locator("#tab-run").get_attribute("aria-selected") == "false"
+
+    # Switch to files
+    ui_page.click("[data-step='files']")
+    ui_page.wait_for_selector("#step-files.active", timeout=3000)
+    assert ui_page.locator("#tab-keywords").get_attribute("aria-selected") == "false"
+    assert ui_page.locator("#tab-files").get_attribute("aria-selected") == "true"
+    assert ui_page.locator("#tab-run").get_attribute("aria-selected") == "false"
+
+    # Switch to run
+    ui_page.click("[data-step='run']")
+    ui_page.wait_for_selector("#step-run.active", timeout=3000)
+    assert ui_page.locator("#tab-keywords").get_attribute("aria-selected") == "false"
+    assert ui_page.locator("#tab-files").get_attribute("aria-selected") == "false"
+    assert ui_page.locator("#tab-run").get_attribute("aria-selected") == "true"

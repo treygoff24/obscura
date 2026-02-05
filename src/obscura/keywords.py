@@ -104,6 +104,10 @@ class KeywordSet:
 
             if line.startswith("regex:"):
                 pattern_str = line[len("regex:"):]
+                if len(pattern_str) > 500:
+                    raise ValueError(
+                        f"Regex pattern too long (max 500 characters) on line '{line}'"
+                    )
                 try:
                     compiled = regex.compile(pattern_str, regex.IGNORECASE)
                 except regex.error as exc:

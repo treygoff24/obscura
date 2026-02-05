@@ -108,7 +108,14 @@
         Object.values(screens).forEach(function (s) {
             if (s) s.classList.remove("active");
         });
-        if (screens[name]) screens[name].classList.add("active");
+        if (screens[name]) {
+            screens[name].classList.add("active");
+            var heading = screens[name].querySelector("h1");
+            if (heading) {
+                heading.setAttribute("tabindex", "-1");
+                heading.focus();
+            }
+        }
     }
 
     /* --- Stepper --- */
@@ -119,8 +126,10 @@
         el.stepTabs.forEach(function (tab) {
             if (tab.dataset.step === stepName) {
                 tab.classList.add("active");
+                tab.setAttribute("aria-selected", "true");
             } else {
                 tab.classList.remove("active");
+                tab.setAttribute("aria-selected", "false");
             }
         });
         el.stepPanels.forEach(function (panel) {
@@ -168,7 +177,7 @@
                 hour: "2-digit", minute: "2-digit",
             });
         } catch (_) {
-            return iso;
+            return esc(iso);
         }
     }
 
@@ -184,13 +193,17 @@
     }
 
     function verdictHTML(status) {
-        var label = statusLabel(status);
-        return '<span class="status-pill ' + statusClass(status) + '">' + label + "</span>";
+        var label = esc(statusLabel(status));
+        return '<span class="status-pill ' + esc(statusClass(status)) + '">' + label + "</span>";
     }
 
     function setProgress(value) {
+        var bar = el.progressFill ? el.progressFill.parentElement : null;
         if (el.progressFill) {
             el.progressFill.style.transform = "scaleX(" + value + ")";
+        }
+        if (bar) {
+            bar.setAttribute("aria-valuenow", Math.round(value * 100));
         }
     }
 
@@ -200,12 +213,29 @@
         if (!el.toastContainer) return;
         var toast = document.createElement("div");
         toast.className = "toast" + (type ? " toast-" + type : "");
-        toast.textContent = message;
+        toast.setAttribute("role", type === "error" ? "alert" : "status");
+        var text = document.createElement("span");
+        text.textContent = message;
+        toast.appendChild(text);
+        var closeBtn = document.createElement("button");
+        closeBtn.textContent = "\u00d7";
+        closeBtn.className = "toast-close";
+        closeBtn.setAttribute("aria-label", "Dismiss");
+        closeBtn.addEventListener("click", function () { toast.remove(); });
+        toast.appendChild(closeBtn);
         el.toastContainer.appendChild(toast);
-        setTimeout(function () {
+        var duration = type === "error" ? 8000 : 3000;
+        var timer = setTimeout(function () {
             toast.classList.add("toast-exit");
             setTimeout(function () { toast.remove(); }, 300);
-        }, 3000);
+        }, duration);
+        toast.addEventListener("mouseenter", function () { clearTimeout(timer); });
+        toast.addEventListener("mouseleave", function () {
+            timer = setTimeout(function () {
+                toast.classList.add("toast-exit");
+                setTimeout(function () { toast.remove(); }, 300);
+            }, 2000);
+        });
     }
 
     /* --- Modal --- */
@@ -217,6 +247,9 @@
         if (el.modalOverlay) el.modalOverlay.classList.remove("hidden");
         if (el.modalOverlay) el.modalOverlay.setAttribute("aria-hidden", "false");
         if (el.modalNewProject) el.modalNewProject.classList.remove("hidden");
+        Object.values(screens).forEach(function (s) {
+            if (s) s.setAttribute("aria-hidden", "true");
+        });
         modalOpen = true;
         if (el.modalProjectName) el.modalProjectName.focus();
     }
@@ -225,6 +258,9 @@
         if (el.modalOverlay) el.modalOverlay.classList.add("hidden");
         if (el.modalOverlay) el.modalOverlay.setAttribute("aria-hidden", "true");
         if (el.modalNewProject) el.modalNewProject.classList.add("hidden");
+        Object.values(screens).forEach(function (s) {
+            if (s) s.removeAttribute("aria-hidden");
+        });
         modalOpen = false;
         if (lastFocused && typeof lastFocused.focus === "function") {
             lastFocused.focus();
@@ -313,7 +349,7 @@
                 card.className = "project-card";
                 card.type = "button";
                 card.innerHTML =
-                    "<h2>" + esc(p.name) + "</h2>" +
+                    '<span class="card-title">' + esc(p.name) + "</span>" +
                     '<div class="meta">' +
                     (p.last_run ? "Last run: " + formatDate(p.last_run) : "Not yet run") +
                     "<br>Language: " + esc(p.language) +
@@ -343,7 +379,7 @@
                 await window.pywebview.api.create_project(name, language);
                 await loadProjects();
             } catch (e) {
-                alert("Failed to create project: " + (e.message || e));
+                showToast("Failed to create project: " + (e.message || e), "error");
             }
         });
     }
@@ -359,8 +395,7 @@
         el.runBtn.disabled = false;
         showStep("keywords");
         showScreen("workspace");
-        await loadProjectSettings();
-        await loadKeywords();
+        await Promise.all([loadProjectSettings(), loadKeywords()]);
         await loadReport();
         await loadFiles();
     }
@@ -406,7 +441,7 @@
                     null
                 );
             } catch (_) {
-                alert("Failed to update language.");
+                showToast("Failed to update language.", "error");
             }
         });
     }
@@ -428,7 +463,7 @@
             var data = JSON.parse(result);
             if (!data.valid) {
                 var message = data.errors.map(function (e) {
-                    return "Line " + e.line + ": " + esc(e.error);
+                    return "Line " + esc("" + e.line) + ": " + esc(e.error);
                 }).join("<br>");
                 el.keywordErrors.innerHTML = message;
                 el.keywordErrors.classList.remove("hidden");
@@ -504,8 +539,8 @@
             var row = document.createElement("button");
             row.className = "file-row";
             row.type = "button";
-            var pill = '<span class="status-pill ' + statusClass(f.status) + '">' +
-                       statusLabel(f.status) + "</span>";
+            var pill = '<span class="status-pill ' + esc(statusClass(f.status)) + '">' +
+                       esc(statusLabel(f.status)) + "</span>";
             var redactionsText = "";
             if (typeof f.redactions_applied === "number") {
                 redactionsText = '<span class="file-redactions">' +
@@ -540,7 +575,7 @@
             await window.pywebview.api.add_files(currentProject);
             await loadFiles();
         } catch (e) {
-            alert("Failed to add files.");
+            showToast("Failed to add files.", "error");
         }
     });
 
@@ -567,7 +602,7 @@
             }
             await loadFiles();
         } catch (err) {
-            alert("Failed to add files.");
+            showToast("Failed to add files.", "error");
         }
     });
 
@@ -581,7 +616,7 @@
 
     /* Run */
 
-        el.runBtn.addEventListener("click", async function () {
+    el.runBtn.addEventListener("click", async function () {
         el.runBtn.disabled = true;
         if (el.runProgress) el.runProgress.classList.remove("hidden");
         setProgress(0);
@@ -609,7 +644,7 @@
             await loadReport();
             await loadFiles();
         } catch (e) {
-            alert("Run failed: " + (e.message || e));
+            showToast("Run failed: " + (e.message || e), "error");
         } finally {
             if (el.runProgress) el.runProgress.classList.add("hidden");
             el.runBtn.disabled = false;
@@ -632,7 +667,7 @@
             el.residualSection.classList.remove("hidden");
             el.residualTableBody.innerHTML = residuals.map(function (m) {
                 return "<tr><td>" + esc(m.keyword) + "</td>" +
-                       "<td>" + m.page + "</td>" +
+                       "<td>" + esc("" + m.page) + "</td>" +
                        "<td>" + esc(m.source || "standard") + "</td></tr>";
             }).join("");
         } else {
@@ -644,7 +679,7 @@
         if (lowConf.length > 0) {
             el.lowconfSection.classList.remove("hidden");
             el.lowconfPages.innerHTML = lowConf.map(function (p) {
-                return '<span class="page-badge warn">Page ' + p + "</span>";
+                return '<span class="page-badge warn">Page ' + esc("" + p) + "</span>";
             }).join("");
         } else {
             el.lowconfSection.classList.add("hidden");
@@ -658,7 +693,7 @@
                 fileData.unverified_warning ||
                 "Pages " + unreadable.join(", ") + " were not OCR-readable and could not be verified.";
             el.unreadablePages.innerHTML = unreadable.map(function (p) {
-                return '<span class="page-badge danger">Page ' + p + "</span>";
+                return '<span class="page-badge danger">Page ' + esc("" + p) + "</span>";
             }).join("");
         } else {
             el.unreadableSection.classList.add("hidden");
@@ -669,7 +704,7 @@
         if (clean.length > 0) {
             el.cleanSection.classList.remove("hidden");
             el.cleanPages.innerHTML = clean.map(function (p) {
-                return '<span class="page-badge ok">Page ' + p + "</span>";
+                return '<span class="page-badge ok">Page ' + esc("" + p) + "</span>";
             }).join("");
         } else {
             el.cleanSection.classList.add("hidden");
@@ -696,7 +731,7 @@
         try {
             await window.pywebview.api.open_in_preview(currentProject, currentFileName);
         } catch (e) {
-            alert("Could not open file: " + (e.message || e));
+            showToast("Could not open file.", "error");
         }
     });
 
@@ -705,7 +740,7 @@
         try {
             await window.pywebview.api.reveal_in_finder(currentProject, currentFileName);
         } catch (e) {
-            alert("Could not reveal file: " + (e.message || e));
+            showToast("Could not reveal file.", "error");
         }
     });
 

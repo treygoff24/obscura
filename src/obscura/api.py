@@ -79,10 +79,15 @@ class ObscuraAPI:
     def create_project(
         self, name: str, language: str = "eng", confidence_threshold: int = 70
     ) -> str:
+        root = self._ensure_root().resolve()
         project = create_project(
-            self._ensure_root(), name, language=language,
+            root, name, language=language,
             confidence_threshold=confidence_threshold,
         )
+        try:
+            project.path.resolve().relative_to(root)
+        except ValueError:
+            raise ValueError("Project path resolves outside root")
         return json.dumps({"name": project.name, "path": str(project.path)})
 
     def run_project(
@@ -131,6 +136,12 @@ class ObscuraAPI:
                 continue
             if line.startswith("regex:"):
                 pattern_str = line[len("regex:"):]
+                if len(pattern_str) > 500:
+                    errors.append({
+                        "line": idx,
+                        "error": "Regex pattern too long (max 500 characters)",
+                    })
+                    continue
                 try:
                     regex.compile(pattern_str, regex.IGNORECASE)
                 except regex.error as exc:
@@ -189,6 +200,9 @@ class ObscuraAPI:
                 skipped.append(str(src))
                 continue
             if src.is_symlink():
+                skipped.append(str(src))
+                continue
+            if not src.is_file():
                 skipped.append(str(src))
                 continue
             dest = project.input_dir / src.name

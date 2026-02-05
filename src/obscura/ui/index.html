@@ -5,34 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Obscura</title>
     <link rel="stylesheet" href="styles.css">
+    <style>.skip-link{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;z-index:999}.skip-link:focus{position:static;width:auto;height:auto;padding:8px 16px;background:var(--accent);color:#fff;text-decoration:none;border-radius:6px;margin:8px}</style>
 </head>
 <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
 
     <!-- Screen 1: Welcome -->
     <div id="screen-welcome" class="screen active">
-        <div class="welcome-container">
+        <main id="main-content" class="welcome-container">
             <h1>Obscura</h1>
             <p class="tagline">Black out sensitive words from your PDFs</p>
             <div class="welcome-steps">
                 <div class="welcome-step">
-                    <span class="step-icon">1</span>
+                    <span class="step-icon" aria-hidden="true">1</span>
                     <h2>Add your words</h2>
                     <p>Type the words or phrases you want removed</p>
                 </div>
                 <div class="welcome-step">
-                    <span class="step-icon">2</span>
+                    <span class="step-icon" aria-hidden="true">2</span>
                     <h2>Drop in your PDFs</h2>
                     <p>Drag files or browse to select them</p>
                 </div>
                 <div class="welcome-step">
-                    <span class="step-icon">3</span>
+                    <span class="step-icon" aria-hidden="true">3</span>
                     <h2>Get clean documents</h2>
                     <p>Obscura blacks out every match and verifies the result</p>
                 </div>
             </div>
             <button id="get-started-btn" class="btn-primary btn-lg">Get Started</button>
             <p class="welcome-note">You'll choose a folder to store your projects</p>
-        </div>
+        </main>
     </div>
 
     <!-- Screen 2: Project List -->
@@ -51,44 +53,45 @@
     <!-- Screen 3: Workspace -->
     <div id="screen-workspace" class="screen">
         <header>
-            <button id="back-to-projects" class="btn-back">&larr; Back</button>
+            <button id="back-to-projects" class="btn-back"><span aria-hidden="true">&larr;</span> Back</button>
             <h1 id="workspace-title">Project</h1>
         </header>
 
-        <nav class="stepper">
-            <button class="step-tab active" data-step="keywords">
-                <span class="step-number">1</span> Words to redact
+        <nav class="stepper" role="tablist">
+            <button id="tab-keywords" class="step-tab active" data-step="keywords" role="tab" aria-selected="true" aria-controls="step-keywords">
+                <span class="step-number" aria-hidden="true">1</span> Words to redact
             </button>
-            <button class="step-tab" data-step="files">
-                <span class="step-number">2</span> Your documents
+            <button id="tab-files" class="step-tab" data-step="files" role="tab" aria-selected="false" aria-controls="step-files">
+                <span class="step-number" aria-hidden="true">2</span> Your documents
             </button>
-            <button class="step-tab" data-step="run">
-                <span class="step-number">3</span> Redact
+            <button id="tab-run" class="step-tab" data-step="run" role="tab" aria-selected="false" aria-controls="step-run">
+                <span class="step-number" aria-hidden="true">3</span> Redact
             </button>
         </nav>
 
+        <main>
         <!-- Step 1: Keywords -->
-        <section id="step-keywords" class="step-panel active">
+        <section id="step-keywords" class="step-panel active" role="tabpanel" aria-labelledby="tab-keywords">
             <div class="step-content">
                 <h2>What words should be blacked out?</h2>
                 <p class="step-desc">Type one word or phrase per line. Every match will be covered with a black box in your PDFs.</p>
                 <div class="keywords-wrap">
                     <label class="sr-only" for="keywords-editor">Words to redact</label>
                     <textarea id="keywords-editor" placeholder="Type words to redact, one per line&#10;&#10;Example:&#10;John Smith&#10;Acme Corp&#10;confidential" spellcheck="false"></textarea>
-                    <span id="save-indicator" class="save-indicator"></span>
+                    <span id="save-indicator" class="save-indicator" aria-live="polite"></span>
                 </div>
-                <div id="keyword-errors" class="validation-error hidden"></div>
+                <div id="keyword-errors" class="validation-error hidden" aria-live="assertive"></div>
                 <details class="advanced-section">
                     <summary>Advanced: pattern matching</summary>
                     <p>Append <code>*</code> to match prefixes (e.g. <code>investor*</code> matches "investors", "investor-relations").</p>
                     <p>Prefix a line with <code>regex:</code> to use a regular expression (e.g. <code>regex:\binvestor\b</code>).</p>
                 </details>
-                <button id="step-next-files" class="btn-primary btn-next">Next: Add documents &rarr;</button>
+                <button id="step-next-files" class="btn-primary btn-next">Next: Add documents <span aria-hidden="true">&rarr;</span></button>
             </div>
         </section>
 
         <!-- Step 2: Files -->
-        <section id="step-files" class="step-panel">
+        <section id="step-files" class="step-panel" role="tabpanel" aria-labelledby="tab-files">
             <div class="step-content">
                 <h2>Add your PDF documents</h2>
                 <p class="step-desc">Drop files below or click to browse. Only PDF files are accepted.</p>
@@ -100,25 +103,25 @@
                 <div id="file-list"></div>
                 <span id="file-count" class="file-count"></span>
                 <div class="step-nav">
-                    <button id="step-prev-keywords" class="btn-secondary btn-prev">&larr; Words</button>
-                    <button id="step-next-run" class="btn-primary btn-next">Next: Redact &rarr;</button>
+                    <button id="step-prev-keywords" class="btn-secondary btn-prev"><span aria-hidden="true">&larr;</span> Words</button>
+                    <button id="step-next-run" class="btn-primary btn-next">Next: Redact <span aria-hidden="true">&rarr;</span></button>
                 </div>
             </div>
         </section>
 
         <!-- Step 3: Run -->
-        <section id="step-run" class="step-panel">
+        <section id="step-run" class="step-panel" role="tabpanel" aria-labelledby="tab-run">
             <div class="step-content">
                 <h2>Ready to redact</h2>
                 <p class="step-desc">Obscura will black out every matching word and verify the results.</p>
                 <button id="run-btn" class="btn-run">Redact my documents</button>
                 <div id="run-progress" class="run-progress hidden">
-                    <div class="progress-bar">
+                    <div class="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Redaction progress">
                         <div id="progress-fill" class="progress-fill"></div>
                     </div>
-                    <p id="progress-text">Processing…</p>
+                    <p id="progress-text" aria-live="polite">Processing…</p>
                 </div>
-                <div id="run-summary" class="run-summary hidden">
+                <div id="run-summary" class="run-summary hidden" aria-live="polite">
                     <div id="summary-verdict"></div>
                     <div class="summary-stats">
                         <div class="stat">
@@ -159,15 +162,16 @@
                         </select>
                     </div>
                 </details>
-                <button id="step-prev-files" class="btn-secondary btn-prev">&larr; Documents</button>
+                <button id="step-prev-files" class="btn-secondary btn-prev"><span aria-hidden="true">&larr;</span> Documents</button>
             </div>
         </section>
+        </main>
     </div>
 
     <!-- Screen 4: Report Detail -->
     <div id="screen-report" class="screen">
         <header>
-            <button id="back-to-workspace" class="btn-back">&larr; Back</button>
+            <button id="back-to-workspace" class="btn-back"><span aria-hidden="true">&larr;</span> Back</button>
             <h1 id="report-title">File Report</h1>
         </header>
         <main class="report-body">
@@ -181,6 +185,7 @@
                 <h2>Words that may still be visible</h2>
                 <p class="section-note">These words were found in the redacted document. Please open the PDF and check these pages manually.</p>
                 <table id="residual-table">
+                    <caption class="sr-only">Residual matches found in redacted document</caption>
                     <thead>
                         <tr><th>Word</th><th>Page</th><th>Found by</th></tr>
                     </thead>
@@ -224,14 +229,14 @@
     </div>
 
     <!-- Modal System -->
-        <div id="modal-overlay" class="modal-overlay hidden" aria-hidden="true">
-            <div id="modal-new-project" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-new-project-title" aria-describedby="modal-new-project-desc">
-                <h2 id="modal-new-project-title">Create new project</h2>
-                <p id="modal-new-project-desc">Each project has its own word list and set of documents.</p>
-                <div class="modal-field">
-                    <label for="modal-project-name">Project name</label>
-                    <input type="text" id="modal-project-name" name="project_name" autocomplete="off" placeholder="e.g. Q1 Board Report">
-                </div>
+    <div id="modal-overlay" class="modal-overlay hidden" aria-hidden="true">
+        <div id="modal-new-project" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-new-project-title" aria-describedby="modal-new-project-desc">
+            <h2 id="modal-new-project-title">Create new project</h2>
+            <p id="modal-new-project-desc">Each project has its own word list and set of documents.</p>
+            <div class="modal-field">
+                <label for="modal-project-name">Project name</label>
+                <input type="text" id="modal-project-name" name="project_name" autocomplete="off" placeholder="e.g. Q1 Board Report">
+            </div>
             <div class="modal-field">
                 <label for="modal-project-language">Document language</label>
                 <select id="modal-project-language">
@@ -248,7 +253,7 @@
     </div>
 
     <!-- Toast Container -->
-        <div id="toast-container" class="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
+    <div id="toast-container" class="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <script src="app.js"></script>
 </body>

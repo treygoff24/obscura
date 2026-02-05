@@ -154,11 +154,22 @@ def ui_server():
 
 @pytest.fixture()
 def ui_page(ui_server, page):
-    """Navigate to the UI and inject the default mock pywebview bridge."""
+    """Navigate to the UI and inject the default mock pywebview bridge.
+
+    The new HTML starts with #screen-welcome active.  Since the default mock
+    returns needs_root=false, we need to bypass the welcome screen by
+    programmatically showing the projects screen and firing pywebviewready
+    so that loadProjects() populates cards.
+    """
     page.add_init_script(build_mock_js(fire_event=False))
     page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    # Skip welcome screen: show projects screen directly, then fire event
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
     page.evaluate(FIRE_EVENT_JS)
     page.wait_for_selector(
-        ".project-card, .empty-state, .root-prompt:not(.hidden)", timeout=5000
+        ".project-card, .empty-state", timeout=5000
     )
     return page
