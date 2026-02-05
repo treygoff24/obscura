@@ -224,3 +224,35 @@ class TestRedactPdf:
         assert result.status == "ok"
         assert result.redaction_count == 0
         assert output_path.exists()
+
+    def test_ocr_returns_none_skips_page(self, tmp_dir, monkeypatch):
+        """When get_textpage_ocr returns None, the page should be skipped."""
+        input_path = _create_pdf(tmp_dir / "input.pdf", [""])
+        output_path = tmp_dir / "output.pdf"
+        keywords = _make_keywords(tmp_dir, ["secret"])
+
+        monkeypatch.setattr(fitz.Page, "get_textpage_ocr", lambda *_a, **_k: None)
+
+        result = redact_pdf(input_path, output_path, keywords)
+
+        assert result.status == "ok"
+        assert result.redaction_count == 0
+        assert result.ocr_used is False
+        assert output_path.exists()
+
+    def test_ocr_initialization_exception_skips_page(self, tmp_dir, monkeypatch):
+        """When get_textpage_ocr raises, the page should be skipped."""
+        input_path = _create_pdf(tmp_dir / "input.pdf", [""])
+        output_path = tmp_dir / "output.pdf"
+        keywords = _make_keywords(tmp_dir, ["secret"])
+
+        def raise_on_ocr(*_a, **_k):
+            raise RuntimeError("Tesseract not found")
+
+        monkeypatch.setattr(fitz.Page, "get_textpage_ocr", raise_on_ocr)
+
+        result = redact_pdf(input_path, output_path, keywords)
+
+        assert result.status == "ok"
+        assert result.redaction_count == 0
+        assert output_path.exists()

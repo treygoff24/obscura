@@ -7,11 +7,15 @@ import hashlib
 import pathlib
 from datetime import datetime, timezone
 
+import logging
+
 import fitz
 
 import obscura
 from obscura.keywords import KeywordSet
 from obscura.runtime import configure_ocr_runtime, parse_tesseract_languages
+
+logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass
@@ -118,19 +122,26 @@ def verify_pdf(
             if has_images:
                 try:
                     tp = page.get_textpage_ocr(language=language, full=True)
-                    if tp is None:
-                        unreadable_pages.append(page_number)
-                        continue
-                    text = page.get_text(textpage=tp)
-                    if text.strip():
-                        _check_ocr_confidence(
-                            page, tp, page_number, confidence_threshold,
-                            low_confidence_pages,
-                        )
-                    else:
-                        unreadable_pages.append(page_number)
-                        continue
                 except Exception:
+                    logger.warning("OCR initialization failed on page %d of %s", page_number, pdf_path.name)
+                    unreadable_pages.append(page_number)
+                    continue
+                if tp is None:
+                    logger.warning("OCR returned None on page %d of %s", page_number, pdf_path.name)
+                    unreadable_pages.append(page_number)
+                    continue
+                try:
+                    text = page.get_text(textpage=tp)
+                except Exception:
+                    logger.warning("OCR text extraction failed on page %d of %s", page_number, pdf_path.name)
+                    unreadable_pages.append(page_number)
+                    continue
+                if text.strip():
+                    _check_ocr_confidence(
+                        page, tp, page_number, confidence_threshold,
+                        low_confidence_pages,
+                    )
+                else:
                     unreadable_pages.append(page_number)
                     continue
             else:
@@ -151,10 +162,14 @@ def verify_pdf(
         for page_num in range(doc.page_count):
             page = doc[page_num]
             page_number = page_num + 1
-            pix = page.get_pixmap(dpi=deep_verify_dpi)
-            img_doc = fitz.open()
-            img_page = img_doc.new_page(width=pix.width, height=pix.height)
-            img_page.insert_image(img_page.rect, pixmap=pix)
+            try:
+                pix = page.get_pixmap(dpi=deep_verify_dpi)
+                img_doc = fitz.open()
+                img_page = img_doc.new_page(width=pix.width, height=pix.height)
+                img_page.insert_image(img_page.rect, pixmap=pix)
+            except Exception:
+                logger.warning("Deep-verify rasterization failed on page %d of %s", page_number, pdf_path.name)
+                continue
             try:
                 dv_tp = img_page.get_textpage_ocr(language=language, full=True)
                 if dv_tp is None:
@@ -171,6 +186,7 @@ def verify_pdf(
                     if entry not in residual_matches:
                         residual_matches.append(entry)
             except Exception:
+                logger.warning("Deep-verify OCR failed on page %d of %s", page_number, pdf_path.name)
                 img_doc.close()
                 continue
             img_doc.close()

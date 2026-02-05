@@ -220,6 +220,48 @@ class TestVerifyPdf:
         assert report.unreadable_pages == [1]
         assert report.status == "unreadable"
 
+    def test_ocr_returns_none_marks_page_unreadable(self, tmp_dir, monkeypatch):
+        """When get_textpage_ocr returns None, the page should be unreadable."""
+        doc = fitz.open()
+        page = doc.new_page()
+        img = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 10, 10), 1)
+        img.set_pixel(5, 5, (255, 0, 0, 255))
+        page.insert_image(fitz.Rect(72, 72, 200, 200), pixmap=img)
+        pdf_path = tmp_dir / "image_none_ocr.pdf"
+        doc.save(str(pdf_path))
+        doc.close()
+
+        keywords = _make_keywords(tmp_dir, ["secret"])
+        monkeypatch.setattr(fitz.Page, "get_textpage_ocr", lambda *_a, **_k: None)
+
+        report = verify_pdf(pdf_path, keywords, confidence_threshold=70)
+
+        assert report.unreadable_pages == [1]
+        assert report.status == "unreadable"
+
+    def test_ocr_initialization_exception_marks_page_unreadable(self, tmp_dir, monkeypatch):
+        """When get_textpage_ocr raises, the page should be unreadable."""
+        doc = fitz.open()
+        page = doc.new_page()
+        img = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 10, 10), 1)
+        img.set_pixel(5, 5, (255, 0, 0, 255))
+        page.insert_image(fitz.Rect(72, 72, 200, 200), pixmap=img)
+        pdf_path = tmp_dir / "image_ocr_init_fail.pdf"
+        doc.save(str(pdf_path))
+        doc.close()
+
+        keywords = _make_keywords(tmp_dir, ["secret"])
+
+        def raise_on_ocr(*_a, **_k):
+            raise RuntimeError("Tesseract not found")
+
+        monkeypatch.setattr(fitz.Page, "get_textpage_ocr", raise_on_ocr)
+
+        report = verify_pdf(pdf_path, keywords, confidence_threshold=70)
+
+        assert report.unreadable_pages == [1]
+        assert report.status == "unreadable"
+
     def test_deep_verify_text_extraction_exception_is_ignored(self, tmp_dir, monkeypatch):
         """Deep-verify OCR extraction failures should not crash verification."""
         pdf_path = _create_pdf(tmp_dir / "deep_error.pdf", ["No secrets here."])
@@ -238,3 +280,30 @@ class TestVerifyPdf:
         report = verify_pdf(pdf_path, keywords, confidence_threshold=70, deep_verify=True)
 
         assert report.status == "clean"
+
+    def test_deep_verify_rasterization_failure_skips_page(self, tmp_dir, monkeypatch):
+        """When get_pixmap raises in deep-verify, the page should be skipped."""
+        pdf_path = _create_pdf(tmp_dir / "deep_pix.pdf", ["Clean content."])
+        keywords = _make_keywords(tmp_dir, ["secret"])
+
+        def raise_on_pixmap(self, **_k):
+            raise RuntimeError("pixmap allocation failed")
+
+        monkeypatch.setattr(fitz.Page, "get_pixmap", raise_on_pixmap)
+
+        report = verify_pdf(pdf_path, keywords, confidence_threshold=70, deep_verify=True)
+
+        assert report.status == "clean"
+        assert report.residual_matches == []
+
+    def test_deep_verify_ocr_returns_none_skips_page(self, tmp_dir, monkeypatch):
+        """When deep-verify get_textpage_ocr returns None, the page is skipped."""
+        pdf_path = _create_pdf(tmp_dir / "deep_none.pdf", ["Clean content."])
+        keywords = _make_keywords(tmp_dir, ["secret"])
+
+        monkeypatch.setattr(fitz.Page, "get_textpage_ocr", lambda *_a, **_k: None)
+
+        report = verify_pdf(pdf_path, keywords, confidence_threshold=70, deep_verify=True)
+
+        assert report.status == "clean"
+        assert report.residual_matches == []
