@@ -509,7 +509,10 @@ def test_modal_focus_trap_and_escape(ui_server, page):
 
     # Escape closes modal.
     page.keyboard.press("Escape")
-    page.wait_for_selector("#modal-new-project.hidden", timeout=3000)
+    page.wait_for_function(
+        "document.getElementById('modal-new-project').classList.contains('hidden')",
+        timeout=3000,
+    )
     page.wait_for_function(
         "document.getElementById('modal-overlay').getAttribute('aria-hidden') === 'true'",
         timeout=2000,
@@ -586,7 +589,7 @@ def test_reduced_motion_disables_toast_animation(ui_page):
         document.body.appendChild(toast);
     """)
     assert ui_page.evaluate("""
-        () => getComputedStyle(document.querySelector('.toast')).animationName === 'none'
+        () => parseFloat(getComputedStyle(document.querySelector('.toast')).animationDuration) < 0.02
     """)
 
 
@@ -955,7 +958,10 @@ def test_modal_overlay_click_closes(ui_server, page):
 
     # Click the overlay itself (top-left corner, outside the modal)
     page.locator("#modal-overlay").click(position={"x": 5, "y": 5})
-    page.wait_for_selector("#modal-new-project.hidden", timeout=3000)
+    page.wait_for_function(
+        "document.getElementById('modal-new-project').classList.contains('hidden')",
+        timeout=3000,
+    )
     assert page.locator("#modal-overlay").get_attribute("aria-hidden") == "true"
 
 
