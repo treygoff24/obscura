@@ -20,6 +20,7 @@ import fitz
 import regex
 
 from obscura.keywords import KeywordSet, _normalize
+from obscura.runtime import configure_ocr_runtime, parse_tesseract_languages
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +193,7 @@ def redact_pdf(
     Returns:
         RedactionResult with status and redaction details.
     """
+    configure_ocr_runtime(parse_tesseract_languages(language))
     source_hash = _file_hash(input_path)
 
     try:

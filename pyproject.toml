@@ -21,6 +21,9 @@ dev = [
 ui = [
     "pywebview>=5.0",
 ]
+build = [
+    "pyinstaller>=6.0",
+]
 cli = []
 
 [project.scripts]

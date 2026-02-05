@@ -11,6 +11,7 @@ import fitz
 
 import obscura
 from obscura.keywords import KeywordSet
+from obscura.runtime import configure_ocr_runtime, parse_tesseract_languages
 
 
 @dataclasses.dataclass
@@ -95,6 +96,8 @@ def verify_pdf(
     Returns:
         VerificationReport with findings.
     """
+    configure_ocr_runtime(parse_tesseract_languages(language))
+
     if source_hash is None:
         source_hash = _file_hash(pdf_path)
     output_hash = _file_hash(pdf_path)
