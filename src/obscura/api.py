@@ -326,13 +326,16 @@ def _resolve_output_file(project: Project, filename: str) -> pathlib.Path | None
         return None
     output_dir = project.output_dir.resolve()
     preferred_names: list[str] = []
+    report_mapped_name = _latest_report_output_file(project, candidate.name)
+    if report_mapped_name:
+        preferred_names.append(report_mapped_name)
+    preferred_names.append(candidate.name)
     mapped_name = output_filename_for_input(candidate.name)
-    preferred_names.append(mapped_name)
-    if candidate.name != mapped_name:
-        preferred_names.append(candidate.name)
+    if mapped_name != candidate.name:
+        preferred_names.append(mapped_name)
 
     fallback: pathlib.Path | None = None
-    for name in preferred_names:
+    for name in dict.fromkeys(preferred_names):
         resolved = (output_dir / name).resolve()
         try:
             resolved.relative_to(output_dir)
@@ -343,6 +346,23 @@ def _resolve_output_file(project: Project, filename: str) -> pathlib.Path | None
         if resolved.exists() and resolved.is_file():
             return resolved
     return fallback
+
+
+def _latest_report_output_file(project: Project, input_name: str) -> str | None:
+    report_files = sorted(project.reports_dir.glob("*.json"))
+    if not report_files:
+        return None
+    try:
+        latest = json.loads(report_files[-1].read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    for entry in latest.get("files", []):
+        if entry.get("file") != input_name:
+            continue
+        output_file = entry.get("output_file")
+        if isinstance(output_file, str) and output_file:
+            return output_file
+    return None
 
 
 def _resolve_input_file(project: Project, filename: str) -> pathlib.Path | None:

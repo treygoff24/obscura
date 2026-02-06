@@ -2,7 +2,7 @@
 
 import pytest
 
-from obscura.naming import output_filename_for_input
+from obscura.naming import disambiguate_output_filenames, output_filename_for_input
 
 
 class TestOutputFilenameForInput:
@@ -24,3 +24,15 @@ class TestOutputFilenameForInput:
     def test_empty_string(self):
         result = output_filename_for_input("")
         assert isinstance(result, str)
+
+
+class TestDisambiguateOutputFilenames:
+    def test_collision_gets_suffix(self):
+        mapping = disambiguate_output_filenames(["doc.pdf", "doc_redacted.pdf"])
+        assert mapping["doc.pdf"] == "doc_redacted.pdf"
+        assert mapping["doc_redacted.pdf"] == "doc_redacted_1.pdf"
+
+    def test_case_insensitive_collision(self):
+        mapping = disambiguate_output_filenames(["Doc.pdf", "doc.pdf"])
+        assert mapping["Doc.pdf"] == "Doc_redacted.pdf"
+        assert mapping["doc.pdf"] == "doc_redacted_1.pdf"

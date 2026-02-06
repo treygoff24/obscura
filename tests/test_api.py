@@ -287,6 +287,37 @@ class TestObscuraAPI:
         assert calls[1][:3] == ["open", "-R", "--"]
         assert calls[1][3].endswith("doc_redacted.pdf")
 
+    def test_open_preview_uses_report_output_mapping_for_collisions(self, tmp_dir, monkeypatch):
+        project = create_project(tmp_dir, "Test")
+        _create_pdf(project.output_dir / "doc_redacted.pdf", text="A")
+        _create_pdf(project.output_dir / "doc_redacted_1.pdf", text="B")
+        report = {
+            "schema_version": 1,
+            "files": [
+                {"file": "doc.pdf", "output_file": "doc_redacted.pdf", "status": "clean"},
+                {"file": "doc_redacted.pdf", "output_file": "doc_redacted_1.pdf", "status": "clean"},
+            ],
+        }
+        (project.reports_dir / "latest.json").write_text(json.dumps(report), encoding="utf-8")
+
+        calls = []
+
+        def fake_popen(args):
+            calls.append(args)
+
+            class DummyProc:
+                pass
+
+            return DummyProc()
+
+        monkeypatch.setattr("obscura.api.subprocess.Popen", fake_popen)
+
+        api = ObscuraAPI(project_root=tmp_dir, config_dir=tmp_dir)
+        api.open_in_preview("Test", "doc_redacted.pdf")
+
+        assert calls[0][:2] == ["open", "--"]
+        assert calls[0][2].endswith("doc_redacted_1.pdf")
+
     def test_resolve_project_rejects_traversal(self, tmp_dir):
         api = ObscuraAPI(project_root=tmp_dir, config_dir=tmp_dir)
         with pytest.raises(ValueError, match="outside root"):

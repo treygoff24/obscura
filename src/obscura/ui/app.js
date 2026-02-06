@@ -625,6 +625,7 @@
         files.forEach(function (f) {
             var rowWrap = document.createElement("div");
             rowWrap.className = "file-row-wrap";
+            rowWrap.setAttribute("role", "listitem");
 
             var row = document.createElement("button");
             row.className = "file-row";

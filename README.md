@@ -41,7 +41,7 @@ Requires Python 3.12+ and [Tesseract](https://github.com/tesseract-ocr/tesseract
 2. **Add keywords** — one per line in the keyword editor (or `keywords.txt`)
 3. **Add PDFs** — drop files into the project
 4. **Run** — Obscura redacts every keyword match, sanitizes metadata, and produces a verification report
-5. **Review** — check the report for any flagged pages, then find your redacted files in the output folder
+5. **Review** — check the report for any flagged pages, then find your redacted files in the output folder (saved as `*_redacted.pdf`)
 
 ### Keyword Format
 

@@ -649,6 +649,23 @@ def test_drop_icon_is_aria_hidden(ui_page):
     """)
 
 
+def test_file_list_has_listitem_semantics(ui_page):
+    """File list uses list/listitem ARIA semantics."""
+    ui_page.locator(".project-card").first.click()
+    ui_page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    ui_page.click("[data-step='files']")
+    ui_page.wait_for_selector("#step-files.active", timeout=3000)
+
+    assert ui_page.evaluate("""
+        () => {
+            const list = document.getElementById('file-list');
+            if (!list || list.getAttribute('role') !== 'list') return false;
+            const items = list.querySelectorAll('[role=\"listitem\"]');
+            return items.length > 0;
+        }
+    """)
+
+
 def test_reduced_motion_disables_spinner_animation(ui_page):
     """Reduced motion should disable spinner animation."""
     ui_page.emulate_media(reduced_motion="reduce")

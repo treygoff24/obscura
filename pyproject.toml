@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "obscura"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local-only, keyword-based PDF redaction. Your documents never leave your machine."
 readme = "README.md"
 license = "MIT"

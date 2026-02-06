@@ -261,3 +261,22 @@ class TestRunProject:
 
         assert (project.output_dir / "doc_redacted.pdf").exists()
         assert not (project.output_dir / "doc_redacted_redacted.pdf").exists()
+
+    def test_colliding_input_names_get_distinct_output_files(self, tmp_dir):
+        """doc.pdf and doc_redacted.pdf must not overwrite each other's output."""
+        project = create_project(tmp_dir, "Test")
+        project.keywords_path.write_text("secret\n")
+        _add_pdf_to_project(project, "doc.pdf", ["Secret A."])
+        _add_pdf_to_project(project, "doc_redacted.pdf", ["Secret B."])
+
+        run_project(project)
+
+        outputs = sorted(p.name for p in project.output_dir.glob("*.pdf"))
+        assert len(outputs) == 2
+        assert "doc_redacted.pdf" in outputs
+        assert any(name.startswith("doc_redacted_") and name.endswith(".pdf") for name in outputs)
+
+        report_files = sorted(project.reports_dir.glob("*.json"))
+        report_data = json.loads(report_files[-1].read_text())
+        mapping = {entry["file"]: entry["output_file"] for entry in report_data["files"]}
+        assert mapping["doc.pdf"] != mapping["doc_redacted.pdf"]

@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 
 import obscura
 from obscura.keywords import KeywordSet
-from obscura.naming import output_filename_for_input
+from obscura.naming import disambiguate_output_filenames
 from obscura.project import Project
 from obscura.redact import redact_pdf
 from obscura.sanitize import sanitize_pdf
@@ -96,7 +96,8 @@ def run_project(
             report_path=None,
         )
 
-    expected_output_names = {output_filename_for_input(pdf.name) for pdf in input_pdfs}
+    output_name_map = disambiguate_output_filenames([pdf.name for pdf in input_pdfs])
+    expected_output_names = set(output_name_map.values())
     _prune_stale_outputs(project.output_dir, expected_output_names)
 
     total_redactions = 0
@@ -105,7 +106,7 @@ def run_project(
     all_reports: list[dict] = []
 
     for pdf_path in input_pdfs:
-        output_name = output_filename_for_input(pdf_path.name)
+        output_name = output_name_map[pdf_path.name]
         output_path = project.output_dir / output_name
 
         try:
