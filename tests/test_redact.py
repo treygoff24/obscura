@@ -1,12 +1,18 @@
 """Tests for PDF redaction engine."""
 
 import pathlib
+import shutil
 
 import fitz
 import pytest
 
 from obscura.keywords import KeywordSet
-from obscura.redact import RedactionResult, redact_pdf
+from obscura.redact import (
+    RedactionResult,
+    _ocr_redact_pass,
+    _search_keywords_on_page,
+    redact_pdf,
+)
 
 
 def _create_pdf(path: pathlib.Path, pages: list[str]) -> pathlib.Path:
@@ -256,3 +262,91 @@ class TestRedactPdf:
         assert result.status == "ok"
         assert result.redaction_count == 0
         assert output_path.exists()
+
+
+class TestOcrRedactPass:
+    @pytest.mark.skipif(
+        not shutil.which("tesseract"), reason="Tesseract not installed"
+    )
+    def test_ocr_redact_pass_catches_image_text(self, tmp_dir):
+        src_doc = fitz.open()
+        src_page = src_doc.new_page()
+        src_page.insert_text((72, 72), "CONFIDENTIAL DOCUMENT", fontsize=24)
+        pix = src_page.get_pixmap(dpi=150)
+        src_doc.close()
+
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_image(page.rect, pixmap=pix)
+
+        assert not page.get_text().strip()
+
+        keywords = _make_keywords(tmp_dir, ["confidential"])
+        count, misses = _ocr_redact_pass(page, keywords, "eng")
+        doc.close()
+
+        assert count > 0
+
+    @pytest.mark.skipif(
+        not shutil.which("tesseract"), reason="Tesseract not installed"
+    )
+    def test_ocr_redact_pass_no_double_count(self, tmp_dir):
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), "CONFIDENTIAL data here", fontsize=12)
+
+        keywords = _make_keywords(tmp_dir, ["confidential"])
+
+        hits, _ = _search_keywords_on_page(page, keywords)
+        for _, rect in hits:
+            page.add_redact_annot(rect, fill=(0, 0, 0))
+        page.apply_redactions()
+
+        ocr_count, _ = _ocr_redact_pass(page, keywords, "eng")
+        doc.close()
+
+        assert ocr_count == 0
+
+    def test_ocr_redact_pass_rasterization_failure(self, tmp_dir, monkeypatch):
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), "CONFIDENTIAL", fontsize=12)
+
+        def raise_error(*args, **kwargs):
+            raise RuntimeError("rasterization failed")
+
+        monkeypatch.setattr(fitz.Page, "get_pixmap", raise_error)
+
+        keywords = _make_keywords(tmp_dir, ["confidential"])
+        count, misses = _ocr_redact_pass(page, keywords, "eng")
+        doc.close()
+
+        assert count == 0
+        assert misses == []
+
+    def test_ocr_redact_pass_ocr_init_failure(self, tmp_dir, monkeypatch):
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), "CONFIDENTIAL", fontsize=12)
+
+        def raise_on_ocr(*args, **kwargs):
+            raise RuntimeError("Tesseract not found")
+
+        monkeypatch.setattr(fitz.Page, "get_textpage_ocr", raise_on_ocr)
+
+        keywords = _make_keywords(tmp_dir, ["confidential"])
+        count, misses = _ocr_redact_pass(page, keywords, "eng")
+        doc.close()
+
+        assert count == 0
+        assert misses == []
+
+    def test_redact_pdf_includes_ocr_count(self, tmp_dir):
+        input_path = _create_pdf(tmp_dir / "input.pdf", ["Some text here."])
+        output_path = tmp_dir / "output.pdf"
+        keywords = _make_keywords(tmp_dir, ["nonexistent"])
+
+        result = redact_pdf(input_path, output_path, keywords)
+
+        assert hasattr(result, "ocr_redaction_count")
+        assert result.ocr_redaction_count >= 0

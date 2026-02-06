@@ -94,7 +94,7 @@ def run_project(
             redaction_result = redact_pdf(
                 pdf_path, output_path, keywords, language=project.language
             )
-            total_redactions += redaction_result.redaction_count
+            total_redactions += redaction_result.redaction_count + redaction_result.ocr_redaction_count
 
             if redaction_result.status == "ok":
                 sanitize_pdf(output_path, output_path)
@@ -113,6 +113,7 @@ def run_project(
                     files_needing_review += 1
                 report_dict = report.to_dict()
                 report_dict["redactions_applied"] = redaction_result.redaction_count
+                report_dict["ocr_redactions_applied"] = redaction_result.ocr_redaction_count
                 report_dict["ocr_used"] = redaction_result.ocr_used
                 report_dict["missed_keywords"] = redaction_result.missed_keywords
                 all_reports.append(report_dict)

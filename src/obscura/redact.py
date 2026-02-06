@@ -46,6 +46,7 @@ class RedactionResult:
     status: str  # "ok", "password_protected", "corrupt"
     source_hash: str
     redaction_count: int
+    ocr_redaction_count: int
     page_count: int
     ocr_used: bool
     pages_with_redactions: list[int]
@@ -173,6 +174,57 @@ def _search_keywords_on_page(
     return hits, misses
 
 
+def _ocr_redact_pass(
+    page: fitz.Page,
+    keywords: KeywordSet,
+    language: str,
+    dpi: int = 150,
+) -> tuple[int, list[dict]]:
+    """OCR second pass: rasterize page, OCR it, redact any remaining keyword matches."""
+    try:
+        pix = page.get_pixmap(dpi=dpi)
+    except Exception:
+        logger.warning("OCR redaction: rasterization failed on page %d", page.number + 1)
+        return 0, []
+
+    img_doc = fitz.open()
+    try:
+        img_page = img_doc.new_page(width=pix.width, height=pix.height)
+        img_page.insert_image(img_page.rect, pixmap=pix)
+
+        try:
+            tp = img_page.get_textpage_ocr(language=language, full=True)
+        except Exception:
+            logger.warning("OCR redaction: OCR init failed on page %d", page.number + 1)
+            return 0, []
+        if tp is None:
+            return 0, []
+
+        try:
+            hits, misses = _search_keywords_on_page(img_page, keywords, textpage=tp)
+        except Exception:
+            logger.warning("OCR redaction: keyword search failed on page %d", page.number + 1)
+            return 0, []
+        if not hits:
+            return 0, misses
+
+        sx = page.rect.width / pix.width
+        sy = page.rect.height / pix.height
+
+        for _keyword, rect in hits:
+            scaled = fitz.Rect(
+                rect.x0 * sx, rect.y0 * sy,
+                rect.x1 * sx, rect.y1 * sy,
+            )
+            expanded = scaled + (-2, -2, 2, 2)
+            page.add_redact_annot(expanded, fill=(0, 0, 0))
+
+        page.apply_redactions(graphics=2)
+        return len(hits), misses
+    finally:
+        img_doc.close()
+
+
 def redact_pdf(
     input_path: pathlib.Path,
     output_path: pathlib.Path,
@@ -204,6 +256,7 @@ def redact_pdf(
             status="corrupt",
             source_hash=source_hash,
             redaction_count=0,
+            ocr_redaction_count=0,
             page_count=0,
             ocr_used=False,
             pages_with_redactions=[],
@@ -217,6 +270,7 @@ def redact_pdf(
             status="password_protected",
             source_hash=source_hash,
             redaction_count=0,
+            ocr_redaction_count=0,
             page_count=0,
             ocr_used=False,
             pages_with_redactions=[],
@@ -263,6 +317,18 @@ def redact_pdf(
         total_redactions += len(hits)
         pages_with_redactions.append(page_num + 1)
 
+    # Second pass: OCR-based redaction for vector text, image text, etc.
+    ocr_redaction_count = 0
+    for page_num in range(doc.page_count):
+        page = doc[page_num]
+        ocr_count, ocr_misses = _ocr_redact_pass(page, keywords, language)
+        if ocr_count > 0:
+            ocr_redaction_count += ocr_count
+            if page_num + 1 not in pages_with_redactions:
+                pages_with_redactions.append(page_num + 1)
+            ocr_used = True
+        all_missed.extend(ocr_misses)
+
     if all_missed:
         logger.warning(
             "Redaction coverage gaps in %s: %d keyword instances had no rectangle",
@@ -291,6 +357,7 @@ def redact_pdf(
         status="ok",
         source_hash=source_hash,
         redaction_count=total_redactions,
+        ocr_redaction_count=ocr_redaction_count,
         page_count=page_count,
         ocr_used=ocr_used,
         pages_with_redactions=pages_with_redactions,
