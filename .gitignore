@@ -35,5 +35,8 @@ htmlcov/
 # AI tooling artifacts
 thoughts/
 
+# Internal docs (design plans, code reviews)
+docs/
+
 # Bundled assets (binary, not for VCS)
 assets/tessdata/

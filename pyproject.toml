@@ -5,11 +5,33 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "obscura"
 version = "0.1.0"
+description = "Local-only, keyword-based PDF redaction. Your documents never leave your machine."
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
+authors = [
+    { name = "Trey Goff" },
+]
+keywords = ["pdf", "redaction", "privacy", "ocr", "legal"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Legal Industry",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Text Processing :: General",
+]
 dependencies = [
     "PyMuPDF>=1.24.0",
     "regex>=2024.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/treygoff/obscura"
+Repository = "https://github.com/treygoff/obscura"
+Issues = "https://github.com/treygoff/obscura/issues"
 
 [project.optional-dependencies]
 dev = [

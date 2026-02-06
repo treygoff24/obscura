@@ -62,6 +62,13 @@ If signing and notarization are enabled, Gatekeeper will treat the app as a stan
 
 Detailed release steps are in `docs/release-macos.md`.
 
+## Dependency Licensing
+
+Obscura is MIT-licensed. However, its core dependency [PyMuPDF](https://pymupdf.readthedocs.io/) is licensed under **AGPL-3.0** (with a commercial license available from [Artifex](https://artifex.com/products/pymupdf-pro)).
+
+- **Using Obscura from source** (via `pip install`): PyMuPDF's AGPL terms apply to PyMuPDF itself. Your use of Obscura's MIT-licensed code is unrestricted.
+- **Distributing a bundled app**: If you redistribute Obscura as a packaged application that includes PyMuPDF, AGPL obligations apply to the distribution. See [PyMuPDF's licensing page](https://pymupdf.readthedocs.io/en/latest/about.html#license) for details.
+
 ## License
 
 MIT
