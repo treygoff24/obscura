@@ -19,8 +19,8 @@ Thanks for your interest in contributing!
 ## Testing
 
 ```bash
-python -m pytest tests/              # all tests
-python -m pytest tests/ -m "not ui"  # skip Playwright UI tests
+python -m pytest tests/ -m "not ui"  # default: non-UI tests
+python -m pytest tests/ --ui         # full suite (includes Playwright UI tests)
 ```
 
 UI tests require Playwright browsers: `python -m playwright install`
