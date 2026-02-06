@@ -30,7 +30,7 @@ _LIGATURE_MAP = str.maketrans({
     "\ufb06": "st",
 })
 
-MATCH_VERSION = 1
+MATCH_VERSION = 2
 
 
 def _normalize(text: str) -> str:

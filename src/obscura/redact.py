@@ -16,6 +16,8 @@ import logging
 import pathlib
 import tempfile
 
+import re
+
 import fitz
 import regex
 
@@ -64,6 +66,20 @@ def _file_hash(path: pathlib.Path) -> str:
     return f"sha256:{h.hexdigest()}"
 
 
+_FUSED_TOKEN_SPLIT = re.compile(r'[^a-zA-Z0-9,.]+')
+
+
+def _split_fused_token(text: str) -> list[str]:
+    """Split a PDF-extracted word on non-ASCII-alphanumeric boundaries.
+
+    Preserves commas and periods so number tokens like '[REDACTED_KEYWORD].00'
+    stay intact. Uses ASCII-only character class (not \\W) because
+    NFKC-normalized Unicode digits would not be split by \\W.
+    """
+    parts = _FUSED_TOKEN_SPLIT.split(text)
+    return [p for p in parts if p]
+
+
 def _extract_line_words(
     page: fitz.Page, textpage: fitz.TextPage | None = None
 ) -> list[_LineWords]:
@@ -75,11 +91,14 @@ def _extract_line_words(
     words.sort(key=lambda w: (w[5], w[6], w[7]))
     grouped: dict[tuple[int, int], list[tuple[str, fitz.Rect]]] = {}
     for w in words:
-        text = _normalize(str(w[4])).lower()
-        if not text:
-            continue
+        raw_text = str(w[4])
+        rect = fitz.Rect(w[:4])
         key = (int(w[5]), int(w[6]))
-        grouped.setdefault(key, []).append((text, fitz.Rect(w[:4])))
+        parts = _split_fused_token(raw_text)
+        for part in parts:
+            norm = _normalize(part).lower()
+            if norm:
+                grouped.setdefault(key, []).append((norm, rect))
 
     lines: list[_LineWords] = []
     for key in sorted(grouped.keys()):

@@ -11,6 +11,7 @@ from obscura.redact import (
     RedactionResult,
     _ocr_redact_pass,
     _search_keywords_on_page,
+    _split_fused_token,
     redact_pdf,
 )
 
@@ -350,3 +351,66 @@ class TestOcrRedactPass:
 
         assert hasattr(result, "ocr_redaction_count")
         assert result.ocr_redaction_count >= 0
+
+
+class TestSplitFusedToken:
+    def test_superscript_prefix(self):
+        assert _split_fused_token("\u00b3Elephant") == ["Elephant"]
+
+    def test_multiple_separators(self):
+        assert _split_fused_token("Island\u00b4\u00b2a") == ["Island", "a"]
+
+    def test_pilcrow_possessive(self):
+        assert _split_fused_token("[REDACTED_KEYWORD]\u00b6s") == ["[REDACTED_KEYWORD]", "s"]
+
+    def test_preserves_comma_numbers(self):
+        assert _split_fused_token("[REDACTED_KEYWORD]") == ["[REDACTED_KEYWORD]"]
+
+    def test_preserves_decimal_numbers(self):
+        assert _split_fused_token("1,000.00") == ["1,000.00"]
+
+    def test_plain_word_unchanged(self):
+        assert _split_fused_token("hello") == ["hello"]
+
+    def test_empty_string(self):
+        assert _split_fused_token("") == []
+
+    def test_only_separators(self):
+        assert _split_fused_token("\u00b3\u00b6") == []
+
+
+class TestFusedTokenRedaction:
+    def test_redact_fused_superscript_token(self, tmp_dir):
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), "\u00b3[REDACTED_KEYWORD] is beautiful")
+        pdf_path = tmp_dir / "fused.pdf"
+        doc.save(str(pdf_path))
+        doc.close()
+
+        output_path = tmp_dir / "redacted.pdf"
+        keywords = _make_keywords(tmp_dir, ["elephant"])
+        result = redact_pdf(pdf_path, output_path, keywords)
+
+        out_doc = fitz.open(str(output_path))
+        text = out_doc[0].get_text().lower()
+        out_doc.close()
+        assert "elephant" not in text
+        assert result.redaction_count > 0
+
+    def test_redact_fused_mid_token(self, tmp_dir):
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), "[REDACTED_KEYWORD]\u00b2the next word")
+        pdf_path = tmp_dir / "fused2.pdf"
+        doc.save(str(pdf_path))
+        doc.close()
+
+        output_path = tmp_dir / "redacted.pdf"
+        keywords = _make_keywords(tmp_dir, ["[REDACTED_KEYWORD]"])
+        result = redact_pdf(pdf_path, output_path, keywords)
+
+        out_doc = fitz.open(str(output_path))
+        text = out_doc[0].get_text().lower()
+        out_doc.close()
+        assert "[REDACTED_KEYWORD]" not in text
