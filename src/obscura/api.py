@@ -168,10 +168,19 @@ class ObscuraAPI:
         items = []
         for pdf in input_files:
             entry = report_map.get(pdf.name, {})
+            redactions_applied = entry.get("redactions_applied")
+            ocr_redactions_applied = entry.get("ocr_redactions_applied")
+            if isinstance(redactions_applied, int) or isinstance(ocr_redactions_applied, int):
+                redactions_applied = int(redactions_applied or 0) + int(ocr_redactions_applied or 0)
+            else:
+                redactions_applied = None
             items.append({
                 "file": pdf.name,
                 "status": entry.get("status", "not_run"),
-                "redactions_applied": entry.get("redactions_applied"),
+                "redactions_applied": redactions_applied,
+                "ocr_redactions_applied": (
+                    ocr_redactions_applied if isinstance(ocr_redactions_applied, int) else None
+                ),
             })
         return json.dumps({"files": items})
 
@@ -258,6 +267,34 @@ class ObscuraAPI:
             return json.dumps({"error": "Output folder not found"})
         subprocess.Popen(["open", "--", str(output_dir)])
         return json.dumps({"status": "ok"})
+
+    def get_log_path(self) -> str:
+        import os
+        log_file = os.environ.get("OBSCURA_LOG_FILE", "")
+        if log_file and pathlib.Path(log_file).exists():
+            return json.dumps({"path": log_file, "exists": True})
+        return json.dumps({"path": log_file, "exists": False})
+
+    def open_log_file(self) -> str:
+        import os
+        log_file = os.environ.get("OBSCURA_LOG_FILE", "")
+        if not log_file or not pathlib.Path(log_file).exists():
+            return json.dumps({"error": "Log file not found"})
+        subprocess.Popen(["open", "--", log_file])
+        return json.dumps({"status": "ok"})
+
+    def get_recent_logs(self, lines: int = 50) -> str:
+        import os
+        log_file = os.environ.get("OBSCURA_LOG_FILE", "")
+        if not log_file or not pathlib.Path(log_file).exists():
+            return json.dumps({"error": "Log file not found", "lines": []})
+        try:
+            content = pathlib.Path(log_file).read_text(encoding="utf-8")
+            all_lines = content.splitlines()
+            recent = all_lines[-lines:] if len(all_lines) > lines else all_lines
+            return json.dumps({"lines": recent})
+        except Exception as exc:
+            return json.dumps({"error": str(exc), "lines": []})
 
 
 def _resolve_output_file(project: Project, filename: str) -> pathlib.Path | None:

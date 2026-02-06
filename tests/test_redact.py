@@ -369,6 +369,15 @@ class TestSplitFusedToken:
     def test_preserves_decimal_numbers(self):
         assert _split_fused_token("1,000.00") == ["1,000.00"]
 
+    def test_preserves_accented_word(self):
+        assert _split_fused_token("José") == ["José"]
+
+    def test_preserves_hyphenated_token(self):
+        assert _split_fused_token("project-x") == ["project-x"]
+
+    def test_preserves_email_token(self):
+        assert _split_fused_token("alice@example.com") == ["alice@example.com"]
+
     def test_plain_word_unchanged(self):
         assert _split_fused_token("hello") == ["hello"]
 
@@ -414,3 +423,57 @@ class TestFusedTokenRedaction:
         text = out_doc[0].get_text().lower()
         out_doc.close()
         assert "[REDACTED_KEYWORD]" not in text
+
+    def test_redact_accented_keyword(self, tmp_dir):
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), "José met Ana")
+        pdf_path = tmp_dir / "accented.pdf"
+        doc.save(str(pdf_path))
+        doc.close()
+
+        output_path = tmp_dir / "redacted-accented.pdf"
+        keywords = _make_keywords(tmp_dir, ["josé"])
+        result = redact_pdf(pdf_path, output_path, keywords)
+
+        out_doc = fitz.open(str(output_path))
+        text = out_doc[0].get_text().lower()
+        out_doc.close()
+        assert "josé" not in text
+        assert result.redaction_count > 0
+
+    def test_redact_hyphenated_keyword(self, tmp_dir):
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), "project-x is active")
+        pdf_path = tmp_dir / "hyphenated.pdf"
+        doc.save(str(pdf_path))
+        doc.close()
+
+        output_path = tmp_dir / "redacted-hyphenated.pdf"
+        keywords = _make_keywords(tmp_dir, ["project-x"])
+        result = redact_pdf(pdf_path, output_path, keywords)
+
+        out_doc = fitz.open(str(output_path))
+        text = out_doc[0].get_text().lower()
+        out_doc.close()
+        assert "project-x" not in text
+        assert result.redaction_count > 0
+
+    def test_redact_email_keyword(self, tmp_dir):
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), "alice@example.com")
+        pdf_path = tmp_dir / "email.pdf"
+        doc.save(str(pdf_path))
+        doc.close()
+
+        output_path = tmp_dir / "redacted-email.pdf"
+        keywords = _make_keywords(tmp_dir, ["alice@example.com"])
+        result = redact_pdf(pdf_path, output_path, keywords)
+
+        out_doc = fitz.open(str(output_path))
+        text = out_doc[0].get_text().lower()
+        out_doc.close()
+        assert "alice@example.com" not in text
+        assert result.redaction_count > 0

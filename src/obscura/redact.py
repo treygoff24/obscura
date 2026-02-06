@@ -15,8 +15,7 @@ import hashlib
 import logging
 import pathlib
 import tempfile
-
-import re
+import unicodedata
 
 import fitz
 import regex
@@ -66,18 +65,59 @@ def _file_hash(path: pathlib.Path) -> str:
     return f"sha256:{h.hexdigest()}"
 
 
-_FUSED_TOKEN_SPLIT = re.compile(r'[^a-zA-Z0-9,.]+')
+_TOKEN_JOINER_PUNCT = frozenset({
+    "'",
+    "’",
+    "-",
+    "_",
+    ".",
+    ",",
+    "@",
+    "+",
+    "&",
+    "/",
+    "\\",
+})
+_KNOWN_FUSED_SEPARATORS = frozenset({"¶"})
+
+
+def _should_split_token_char(ch: str) -> bool:
+    """Return True when a character should split a PDF-extracted token.
+
+    We split known "fusing" characters (e.g., superscript digits) that can
+    normalize into word characters and break \\b boundaries, while preserving
+    punctuation commonly used inside real keywords (emails, hyphenated names).
+    """
+    if ch in _TOKEN_JOINER_PUNCT:
+        return False
+    if ch in _KNOWN_FUSED_SEPARATORS:
+        return True
+
+    category = unicodedata.category(ch)
+    if category in {"No", "Nl", "Sk", "Sc"}:
+        return True
+    if category.startswith("Z") or category.startswith("C"):
+        return True
+    return False
 
 
 def _split_fused_token(text: str) -> list[str]:
-    """Split a PDF-extracted word on non-ASCII-alphanumeric boundaries.
+    """Split a PDF-extracted token on likely Unicode fusion separators."""
+    if not text:
+        return []
 
-    Preserves commas and periods so number tokens like '[REDACTED_KEYWORD].00'
-    stay intact. Uses ASCII-only character class (not \\W) because
-    NFKC-normalized Unicode digits would not be split by \\W.
-    """
-    parts = _FUSED_TOKEN_SPLIT.split(text)
-    return [p for p in parts if p]
+    parts: list[str] = []
+    buffer: list[str] = []
+    for ch in text:
+        if _should_split_token_char(ch):
+            if buffer:
+                parts.append("".join(buffer))
+                buffer.clear()
+        else:
+            buffer.append(ch)
+    if buffer:
+        parts.append("".join(buffer))
+    return parts
 
 
 def _extract_line_words(

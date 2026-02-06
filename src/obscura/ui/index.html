@@ -51,6 +51,9 @@
                 <p class="empty-state">Loading projects...</p>
             </div>
         </main>
+        <footer class="screen-footer">
+            <button id="view-logs-btn" class="btn-link" type="button">View logs</button>
+        </footer>
     </div>
 
     <!-- Screen 3: Workspace -->
@@ -77,7 +80,7 @@
         <section id="step-keywords" class="step-panel active" role="tabpanel" aria-labelledby="tab-keywords">
             <div class="step-content">
                 <h2>What words should be blacked out?</h2>
-                <p class="step-desc">Type one word or phrase per line. Every match will be covered with a black box in your PDFs.</p>
+                <p class="step-desc">Type one word or phrase per line. Matching is case-insensitive (for example, "john" also matches "John" and "JOHN"). Every match will be covered with a black box in your PDFs.</p>
                 <div class="keywords-wrap">
                     <label class="sr-only" for="keywords-editor">Words to redact</label>
                     <textarea id="keywords-editor" placeholder="Type words to redact, one per line&#10;&#10;Example:&#10;John Smith&#10;Acme Corp&#10;confidential" spellcheck="false"></textarea>
@@ -88,6 +91,7 @@
                     <summary>Advanced: pattern matching</summary>
                     <p>Append <code>*</code> to match prefixes (e.g. <code>investor*</code> matches "investors", "investor-relations").</p>
                     <p>Prefix a line with <code>regex:</code> to use a regular expression (e.g. <code>regex:\binvestor\b</code>).</p>
+                    <p>All matching modes above are case-insensitive.</p>
                 </details>
                 <button id="step-next-files" class="btn-primary btn-next">Next: Add documents <span aria-hidden="true">&rarr;</span></button>
             </div>

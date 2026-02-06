@@ -172,6 +172,27 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .btn-back:hover { background: var(--surface-3); color: var(--text-primary); }
 
+.btn-link {
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    padding: 4px 8px;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.btn-link:hover { color: var(--text-secondary); }
+
+.screen-footer {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+}
+
 .btn-lg {
     padding: 12px 32px;
     font-size: 15px;

@@ -164,16 +164,15 @@ def verify_pdf(
             page_number = page_num + 1
             try:
                 pix = page.get_pixmap(dpi=deep_verify_dpi)
-                img_doc = fitz.open()
-                img_page = img_doc.new_page(width=pix.width, height=pix.height)
-                img_page.insert_image(img_page.rect, pixmap=pix)
             except Exception:
                 logger.warning("Deep-verify rasterization failed on page %d of %s", page_number, pdf_path.name)
                 continue
+            img_doc = fitz.open()
             try:
+                img_page = img_doc.new_page(width=pix.width, height=pix.height)
+                img_page.insert_image(img_page.rect, pixmap=pix)
                 dv_tp = img_page.get_textpage_ocr(language=language, full=True)
                 if dv_tp is None:
-                    img_doc.close()
                     continue
                 ocr_text = img_page.get_text()
                 dv_matches = keywords.find_matches(ocr_text)
@@ -187,9 +186,9 @@ def verify_pdf(
                         residual_matches.append(entry)
             except Exception:
                 logger.warning("Deep-verify OCR failed on page %d of %s", page_number, pdf_path.name)
-                img_doc.close()
                 continue
-            img_doc.close()
+            finally:
+                img_doc.close()
 
     doc.close()
 

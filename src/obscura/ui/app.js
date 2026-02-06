@@ -751,7 +751,7 @@
             await loadReport();
             await loadFiles();
         } catch (e) {
-            showToast("Run failed: " + (e.message || e), "error");
+            showToast("Run failed: " + (e.message || e) + " — check View logs for details.", "error");
         } finally {
             if (el.runProgress) el.runProgress.classList.add("hidden");
             el.runBtn.disabled = false;
@@ -835,8 +835,20 @@
         }
 
         /* Metadata */
-        el.metaRedactions.textContent =
-            typeof fileData.redactions_applied === "number" ? fileData.redactions_applied : "--";
+        var standardRedactions =
+            typeof fileData.redactions_applied === "number" ? fileData.redactions_applied : null;
+        var ocrRedactions =
+            typeof fileData.ocr_redactions_applied === "number" ? fileData.ocr_redactions_applied : 0;
+        var hasFullReportMetadata = typeof fileData.deep_verify === "boolean";
+        if (standardRedactions === null && ocrRedactions > 0) {
+            el.metaRedactions.textContent = ocrRedactions;
+        } else if (standardRedactions !== null) {
+            el.metaRedactions.textContent = hasFullReportMetadata
+                ? (standardRedactions + ocrRedactions)
+                : standardRedactions;
+        } else {
+            el.metaRedactions.textContent = "--";
+        }
         el.metaDeepverify.textContent = fileData.deep_verify ? "Yes (" + fileData.deep_verify_dpi + " DPI)" : "No";
         el.metaLanguage.textContent = fileData.language || "--";
         el.metaThreshold.textContent =
@@ -875,6 +887,23 @@
             showToast("Could not reveal file.", "error");
         }
     });
+
+    /* --- Logs --- */
+
+    var viewLogsBtn = document.getElementById("view-logs-btn");
+    if (viewLogsBtn) {
+        viewLogsBtn.addEventListener("click", async function () {
+            try {
+                var result = await window.pywebview.api.open_log_file();
+                var data = JSON.parse(result);
+                if (data.error) {
+                    showToast("No log file found.", "error");
+                }
+            } catch (e) {
+                showToast("Could not open log file.", "error");
+            }
+        });
+    }
 
     /* --- Init --- */
 

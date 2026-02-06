@@ -124,7 +124,12 @@ class TestObscuraAPI:
         report = {
             "schema_version": 1,
             "files": [
-                {"file": "doc.pdf", "status": "needs_review", "redactions_applied": 2},
+                {
+                    "file": "doc.pdf",
+                    "status": "needs_review",
+                    "redactions_applied": 2,
+                    "ocr_redactions_applied": 1,
+                },
             ],
         }
         (project.reports_dir / "report.json").write_text(
@@ -136,7 +141,8 @@ class TestObscuraAPI:
         files = {item["file"]: item for item in result["files"]}
 
         assert files["doc.pdf"]["status"] == "needs_review"
-        assert files["doc.pdf"]["redactions_applied"] == 2
+        assert files["doc.pdf"]["redactions_applied"] == 3
+        assert files["doc.pdf"]["ocr_redactions_applied"] == 1
         assert files["clean.pdf"]["status"] == "not_run"
 
     def test_list_files_with_invalid_report(self, tmp_dir):
