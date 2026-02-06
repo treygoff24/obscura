@@ -29,9 +29,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/treygoff/obscura"
-Repository = "https://github.com/treygoff/obscura"
-Issues = "https://github.com/treygoff/obscura/issues"
+Homepage = "https://github.com/treygoff24/obscura"
+Repository = "https://github.com/treygoff24/obscura"
+Issues = "https://github.com/treygoff24/obscura/issues"
 
 [project.optional-dependencies]
 dev = [
