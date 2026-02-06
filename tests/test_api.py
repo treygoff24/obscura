@@ -201,6 +201,17 @@ class TestObscuraAPI:
         missing = json.loads(api.remove_file("Test", "missing.pdf"))
         assert "error" in missing
 
+    def test_remove_file_rejects_non_pdf(self, tmp_dir):
+        """remove_file should reject non-PDF files even if they exist in input dir."""
+        project = create_project(tmp_dir, "Test")
+        txt_file = project.input_dir / "notes.txt"
+        txt_file.write_text("some notes")
+        api = ObscuraAPI(project_root=tmp_dir, config_dir=tmp_dir)
+
+        result = json.loads(api.remove_file("Test", "notes.txt"))
+        assert "error" in result
+        assert txt_file.exists()  # File should not have been deleted
+
     def test_update_project_settings(self, tmp_dir):
         create_project(tmp_dir, "Test")
         api = ObscuraAPI(project_root=tmp_dir, config_dir=tmp_dir)

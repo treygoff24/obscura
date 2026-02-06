@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 
 import obscura
 from obscura.keywords import KeywordSet
+from obscura.naming import output_filename_for_input
 from obscura.project import Project
 from obscura.redact import redact_pdf
 from obscura.sanitize import sanitize_pdf
@@ -41,19 +42,12 @@ class RunSummary:
     report_path: pathlib.Path | None
 
 
-def _output_filename_for_input(input_name: str) -> str:
-    candidate = pathlib.Path(input_name)
-    stem = candidate.stem
-    suffix = candidate.suffix
-    if stem.lower().endswith("_redacted"):
-        return candidate.name
-    return f"{stem}_redacted{suffix}"
-
-
 def _prune_stale_outputs(output_dir: pathlib.Path, expected_names: set[str]) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     for output_pdf in output_dir.glob("*.pdf"):
         if output_pdf.name in expected_names:
+            continue
+        if output_pdf.is_symlink():
             continue
         try:
             output_pdf.unlink()
@@ -102,7 +96,7 @@ def run_project(
             report_path=None,
         )
 
-    expected_output_names = {_output_filename_for_input(pdf.name) for pdf in input_pdfs}
+    expected_output_names = {output_filename_for_input(pdf.name) for pdf in input_pdfs}
     _prune_stale_outputs(project.output_dir, expected_output_names)
 
     total_redactions = 0
@@ -111,7 +105,7 @@ def run_project(
     all_reports: list[dict] = []
 
     for pdf_path in input_pdfs:
-        output_name = _output_filename_for_input(pdf_path.name)
+        output_name = output_filename_for_input(pdf_path.name)
         output_path = project.output_dir / output_name
 
         try:

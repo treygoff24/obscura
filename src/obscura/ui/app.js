@@ -621,10 +621,10 @@
         }
         el.fileCount.textContent = files.length + " file" + (files.length !== 1 ? "s" : "");
         el.fileList.innerHTML = "";
+        el.fileList.setAttribute("role", "list");
         files.forEach(function (f) {
             var rowWrap = document.createElement("div");
             rowWrap.className = "file-row-wrap";
-            rowWrap.setAttribute("role", "listitem");
 
             var row = document.createElement("button");
             row.className = "file-row";
@@ -652,7 +652,16 @@
             removeBtn.textContent = "Remove";
             removeBtn.addEventListener("click", function (event) {
                 event.stopPropagation();
-                removeInputFile(f.file);
+                if (removeBtn.classList.contains("file-remove-confirm")) {
+                    removeInputFile(f.file);
+                } else {
+                    removeBtn.textContent = "Sure?";
+                    removeBtn.classList.add("file-remove-confirm");
+                    removeBtn._revertTimer = setTimeout(function () {
+                        removeBtn.textContent = "Remove";
+                        removeBtn.classList.remove("file-remove-confirm");
+                    }, 3000);
+                }
             });
 
             rowWrap.appendChild(row);
@@ -672,6 +681,12 @@
             }
             showToast("Removed " + filename + ".", "success");
             await loadFiles();
+            var nextRow = el.fileList.querySelector(".file-row");
+            if (nextRow) {
+                nextRow.focus();
+            } else if (el.addFilesBtn) {
+                el.addFilesBtn.focus();
+            }
         } catch (_) {
             showToast("Failed to remove file.", "error");
         }

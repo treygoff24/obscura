@@ -215,3 +215,49 @@ class TestRunProject:
         report_data = json.loads(report_files[-1].read_text())
         assert report_data["files"][0]["file"] == "doc.pdf"
         assert report_data["files"][0]["output_file"] == "doc_redacted.pdf"
+
+    def test_symlink_pdfs_survive_pruning(self, tmp_dir):
+        """Symlink PDFs in output dir should not be pruned."""
+        project = create_project(tmp_dir, "Test")
+        project.keywords_path.write_text("secret\n")
+        _add_pdf_to_project(project, "a.pdf", ["Secret one."])
+
+        run_project(project)
+        assert (project.output_dir / "a_redacted.pdf").exists()
+
+        # Create a symlink PDF in output that doesn't match any input
+        real_pdf = project.output_dir / "a_redacted.pdf"
+        symlink_pdf = project.output_dir / "linked.pdf"
+        symlink_pdf.symlink_to(real_pdf)
+
+        # Re-run — symlink should survive pruning
+        run_project(project)
+        assert symlink_pdf.is_symlink()
+        assert symlink_pdf.exists()
+
+    def test_non_pdf_files_survive_pruning(self, tmp_dir):
+        """Non-PDF files in output dir should not be pruned."""
+        project = create_project(tmp_dir, "Test")
+        project.keywords_path.write_text("secret\n")
+        _add_pdf_to_project(project, "a.pdf", ["Secret one."])
+
+        run_project(project)
+
+        # Add a non-PDF file to output dir
+        txt_file = project.output_dir / "notes.txt"
+        txt_file.write_text("some notes")
+
+        # Re-run — .txt should survive since pruning only globs *.pdf
+        run_project(project)
+        assert txt_file.exists()
+
+    def test_already_redacted_filename_not_double_suffixed(self, tmp_dir):
+        """Input named 'doc_redacted.pdf' should output as 'doc_redacted.pdf', not 'doc_redacted_redacted.pdf'."""
+        project = create_project(tmp_dir, "Test")
+        project.keywords_path.write_text("secret\n")
+        _add_pdf_to_project(project, "doc_redacted.pdf", ["Secret info."])
+
+        run_project(project)
+
+        assert (project.output_dir / "doc_redacted.pdf").exists()
+        assert not (project.output_dir / "doc_redacted_redacted.pdf").exists()

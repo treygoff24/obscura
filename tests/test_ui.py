@@ -815,7 +815,13 @@ def test_remove_file_updates_list(ui_server, page):
     page.locator(".file-row").first.wait_for(state="visible", timeout=3000)
     assert page.locator(".file-row").count() == 2
 
-    page.locator('.file-remove-btn[aria-label="Remove contract.pdf"]').click()
+    remove_btn = page.locator('.file-remove-btn[aria-label="Remove contract.pdf"]')
+    remove_btn.click()  # First click shows "Sure?"
+    page.wait_for_function(
+        'document.querySelector(\'.file-remove-btn[aria-label="Remove contract.pdf"]\').textContent === "Sure?"',
+        timeout=3000,
+    )
+    remove_btn.click()  # Second click confirms removal
 
     page.wait_for_function("window._removeCalls.length === 1", timeout=3000)
     page.wait_for_function("document.querySelectorAll('.file-row').length === 1", timeout=3000)
@@ -842,10 +848,51 @@ def test_remove_file_error_toast(ui_server, page):
     page.click("[data-step='files']")
     page.wait_for_selector("#step-files.active", timeout=3000)
 
-    page.locator(".file-remove-btn").first.click()
+    remove_btn = page.locator(".file-remove-btn").first
+    remove_btn.click()  # First click shows "Sure?"
+    page.wait_for_function(
+        "document.querySelector('.file-remove-btn').textContent === 'Sure?'",
+        timeout=3000,
+    )
+    remove_btn.click()  # Second click confirms removal
     toast = page.locator(".toast.toast-error")
     toast.wait_for(state="visible", timeout=5000)
     assert "Failed to remove file" in toast.text_content()
+
+
+def test_remove_confirm_reverts_after_timeout(ui_server, page):
+    """Remove button reverts from 'Sure?' back to 'Remove' after timeout."""
+    mock = build_mock_js(fire_event=False)
+    page.add_init_script(mock)
+    page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
+    page.evaluate(FIRE_EVENT_JS)
+    page.wait_for_selector(".project-card", timeout=3000)
+    page.locator(".project-card").first.click()
+    page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    page.click("[data-step='files']")
+    page.wait_for_selector("#step-files.active", timeout=3000)
+
+    remove_btn = page.locator(".file-remove-btn").first
+    remove_btn.wait_for(state="visible", timeout=3000)
+    remove_btn.click()
+
+    page.wait_for_function(
+        "document.querySelector('.file-remove-btn').textContent === 'Sure?'",
+        timeout=3000,
+    )
+    assert remove_btn.text_content() == "Sure?"
+    assert "file-remove-confirm" in remove_btn.get_attribute("class")
+
+    # Wait for revert (3 second timer + buffer)
+    page.wait_for_function(
+        "document.querySelector('.file-remove-btn').textContent === 'Remove'",
+        timeout=5000,
+    )
+    assert remove_btn.text_content() == "Remove"
 
 
 def test_no_files_empty_state(ui_server, page):

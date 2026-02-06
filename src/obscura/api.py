@@ -8,9 +8,10 @@ import shutil
 import subprocess
 from typing import Iterable, TYPE_CHECKING
 
+from obscura.config import AppConfig, save_config
+from obscura.naming import output_filename_for_input
 from obscura.project import Project, create_project, discover_projects
 from obscura.runner import run_project
-from obscura.config import AppConfig, save_config
 
 if TYPE_CHECKING:
     import webview
@@ -179,7 +180,7 @@ class ObscuraAPI:
                 "output_file": (
                     entry.get("output_file")
                     if isinstance(entry.get("output_file"), str) and entry.get("output_file")
-                    else _output_filename_for_input(pdf.name)
+                    else output_filename_for_input(pdf.name)
                 ),
                 "status": entry.get("status", "not_run"),
                 "redactions_applied": redactions_applied,
@@ -325,7 +326,7 @@ def _resolve_output_file(project: Project, filename: str) -> pathlib.Path | None
         return None
     output_dir = project.output_dir.resolve()
     preferred_names: list[str] = []
-    mapped_name = _output_filename_for_input(candidate.name)
+    mapped_name = output_filename_for_input(candidate.name)
     preferred_names.append(mapped_name)
     if candidate.name != mapped_name:
         preferred_names.append(candidate.name)
@@ -342,15 +343,6 @@ def _resolve_output_file(project: Project, filename: str) -> pathlib.Path | None
         if resolved.exists() and resolved.is_file():
             return resolved
     return fallback
-
-
-def _output_filename_for_input(input_name: str) -> str:
-    candidate = pathlib.Path(input_name)
-    stem = candidate.stem
-    suffix = candidate.suffix
-    if stem.lower().endswith("_redacted"):
-        return candidate.name
-    return f"{stem}_redacted{suffix}"
 
 
 def _resolve_input_file(project: Project, filename: str) -> pathlib.Path | None:
