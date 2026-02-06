@@ -176,6 +176,11 @@ class ObscuraAPI:
                 redactions_applied = None
             items.append({
                 "file": pdf.name,
+                "output_file": (
+                    entry.get("output_file")
+                    if isinstance(entry.get("output_file"), str) and entry.get("output_file")
+                    else _output_filename_for_input(pdf.name)
+                ),
                 "status": entry.get("status", "not_run"),
                 "redactions_applied": redactions_applied,
                 "ocr_redactions_applied": (
@@ -228,6 +233,21 @@ class ObscuraAPI:
             shutil.copy2(src, dest)
             added.append(dest.name)
         return json.dumps({"status": "ok", "added": added, "skipped": skipped})
+
+    def remove_file(self, name: str, filename: str) -> str:
+        project = self._resolve_project(name)
+        input_file = _resolve_input_file(project, filename)
+        if input_file is None:
+            return json.dumps({"error": "Invalid file name"})
+        if input_file.suffix.lower() != ".pdf":
+            return json.dumps({"error": "Only PDF files can be removed"})
+        if not input_file.exists() or not input_file.is_file():
+            return json.dumps({"error": "File not found"})
+        try:
+            input_file.unlink()
+        except OSError as exc:
+            return json.dumps({"error": f"Could not remove file: {exc}"})
+        return json.dumps({"status": "ok", "removed": input_file.name})
 
     def update_project_settings(
         self, name: str, language: str | None = None, confidence_threshold: int | None = None
@@ -304,9 +324,45 @@ def _resolve_output_file(project: Project, filename: str) -> pathlib.Path | None
     if candidate.name != filename:
         return None
     output_dir = project.output_dir.resolve()
-    resolved = (output_dir / candidate).resolve()
+    preferred_names: list[str] = []
+    mapped_name = _output_filename_for_input(candidate.name)
+    preferred_names.append(mapped_name)
+    if candidate.name != mapped_name:
+        preferred_names.append(candidate.name)
+
+    fallback: pathlib.Path | None = None
+    for name in preferred_names:
+        resolved = (output_dir / name).resolve()
+        try:
+            resolved.relative_to(output_dir)
+        except ValueError:
+            continue
+        if fallback is None:
+            fallback = resolved
+        if resolved.exists() and resolved.is_file():
+            return resolved
+    return fallback
+
+
+def _output_filename_for_input(input_name: str) -> str:
+    candidate = pathlib.Path(input_name)
+    stem = candidate.stem
+    suffix = candidate.suffix
+    if stem.lower().endswith("_redacted"):
+        return candidate.name
+    return f"{stem}_redacted{suffix}"
+
+
+def _resolve_input_file(project: Project, filename: str) -> pathlib.Path | None:
+    if not filename:
+        return None
+    candidate = pathlib.Path(filename)
+    if candidate.name != filename:
+        return None
+    input_dir = project.input_dir.resolve()
+    resolved = (input_dir / candidate).resolve()
     try:
-        resolved.relative_to(output_dir)
+        resolved.relative_to(input_dir)
     except ValueError:
         return None
     return resolved

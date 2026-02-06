@@ -41,6 +41,26 @@ class RunSummary:
     report_path: pathlib.Path | None
 
 
+def _output_filename_for_input(input_name: str) -> str:
+    candidate = pathlib.Path(input_name)
+    stem = candidate.stem
+    suffix = candidate.suffix
+    if stem.lower().endswith("_redacted"):
+        return candidate.name
+    return f"{stem}_redacted{suffix}"
+
+
+def _prune_stale_outputs(output_dir: pathlib.Path, expected_names: set[str]) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for output_pdf in output_dir.glob("*.pdf"):
+        if output_pdf.name in expected_names:
+            continue
+        try:
+            output_pdf.unlink()
+        except OSError as exc:
+            logger.warning("Could not remove stale output %s: %s", output_pdf.name, exc)
+
+
 def run_project(
     project: Project,
     deep_verify: bool = False,
@@ -82,13 +102,17 @@ def run_project(
             report_path=None,
         )
 
+    expected_output_names = {_output_filename_for_input(pdf.name) for pdf in input_pdfs}
+    _prune_stale_outputs(project.output_dir, expected_output_names)
+
     total_redactions = 0
     files_needing_review = 0
     files_errored = 0
     all_reports: list[dict] = []
 
     for pdf_path in input_pdfs:
-        output_path = project.output_dir / pdf_path.name
+        output_name = _output_filename_for_input(pdf_path.name)
+        output_path = project.output_dir / output_name
 
         try:
             redaction_result = redact_pdf(
@@ -116,10 +140,13 @@ def run_project(
                 report_dict["ocr_redactions_applied"] = redaction_result.ocr_redaction_count
                 report_dict["ocr_used"] = redaction_result.ocr_used
                 report_dict["missed_keywords"] = redaction_result.missed_keywords
+                report_dict["file"] = pdf_path.name
+                report_dict["output_file"] = output_name
                 all_reports.append(report_dict)
             else:
                 all_reports.append({
                     "file": pdf_path.name,
+                    "output_file": output_name,
                     "status": redaction_result.status,
                     "source_hash": redaction_result.source_hash,
                     "redactions_applied": 0,
@@ -132,11 +159,13 @@ def run_project(
             files_errored += 1
             all_reports.append({
                 "file": pdf_path.name,
+                "output_file": output_name,
                 "status": "error",
                 "error": str(exc),
             })
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
+    run_time = datetime.now(timezone.utc)
+    timestamp = run_time.strftime("%Y-%m-%dT%H-%M-%S-%f")
     run_id = f"{timestamp}-{uuid.uuid4().hex[:8]}"
 
     report_data = {
@@ -144,7 +173,7 @@ def run_project(
         "run_id": run_id,
         "engine_version": obscura.__version__,
         "project_name": project.name,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": run_time.isoformat(),
         "settings": {
             "deep_verify": deep_verify,
             "deep_verify_dpi": deep_verify_dpi if deep_verify else None,
@@ -155,12 +184,12 @@ def run_project(
         "files": all_reports,
     }
 
-    report_path = project.reports_dir / f"{timestamp}.json"
+    report_path = project.reports_dir / f"{run_id}.json"
     report_path.write_text(
         json.dumps(report_data, indent=2) + "\n", encoding="utf-8"
     )
 
-    project.last_run = datetime.now(timezone.utc).isoformat()
+    project.last_run = run_time.isoformat()
     project.save()
 
     return RunSummary(

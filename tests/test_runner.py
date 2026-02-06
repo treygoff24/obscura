@@ -30,8 +30,8 @@ class TestRunProject:
         summary = run_project(project)
 
         assert summary.files_processed == 2
-        assert (project.output_dir / "doc1.pdf").exists()
-        assert (project.output_dir / "doc2.pdf").exists()
+        assert (project.output_dir / "doc1_redacted.pdf").exists()
+        assert (project.output_dir / "doc2_redacted.pdf").exists()
 
     def test_generates_verification_report(self, tmp_dir):
         project = create_project(tmp_dir, "Test")
@@ -60,7 +60,7 @@ class TestRunProject:
 
         run_project(project)
 
-        doc = fitz.open(str(project.output_dir / "doc.pdf"))
+        doc = fitz.open(str(project.output_dir / "doc_redacted.pdf"))
         text = doc[0].get_text()
         doc.close()
         assert "secret" not in text.lower()
@@ -79,7 +79,7 @@ class TestRunProject:
 
         run_project(project)
 
-        doc = fitz.open(str(project.output_dir / "doc.pdf"))
+        doc = fitz.open(str(project.output_dir / "doc_redacted.pdf"))
         assert doc.metadata.get("author", "") == ""
         doc.close()
 
@@ -127,7 +127,7 @@ class TestRunProject:
         summary = run_project(project)
 
         assert summary.files_processed == 2
-        assert (project.output_dir / "good.pdf").exists()
+        assert (project.output_dir / "good_redacted.pdf").exists()
         assert summary.files_errored >= 0
 
     def test_empty_keywords_raises(self, tmp_dir):
@@ -175,3 +175,43 @@ class TestRunProject:
         report_files = list(project.reports_dir.glob("*.json"))
         report_data = json.loads(report_files[0].read_text())
         assert report_data["files"][0]["status"] == "error"
+
+    def test_report_paths_are_unique_for_back_to_back_runs(self, tmp_dir):
+        project = create_project(tmp_dir, "Test")
+        project.keywords_path.write_text("secret\n")
+        _add_pdf_to_project(project, "doc.pdf", ["Secret."])
+
+        summary1 = run_project(project)
+        summary2 = run_project(project)
+
+        assert summary1.report_path != summary2.report_path
+        report_files = sorted(project.reports_dir.glob("*.json"))
+        assert len(report_files) == 2
+
+    def test_prunes_stale_output_files_when_inputs_removed(self, tmp_dir):
+        project = create_project(tmp_dir, "Test")
+        project.keywords_path.write_text("secret\n")
+        _add_pdf_to_project(project, "a.pdf", ["Secret one."])
+        _add_pdf_to_project(project, "b.pdf", ["Secret two."])
+
+        run_project(project)
+        assert (project.output_dir / "a_redacted.pdf").exists()
+        assert (project.output_dir / "b_redacted.pdf").exists()
+
+        (project.input_dir / "b.pdf").unlink()
+        run_project(project)
+
+        assert (project.output_dir / "a_redacted.pdf").exists()
+        assert not (project.output_dir / "b_redacted.pdf").exists()
+
+    def test_report_includes_output_file_mapping(self, tmp_dir):
+        project = create_project(tmp_dir, "Test")
+        project.keywords_path.write_text("secret\n")
+        _add_pdf_to_project(project, "doc.pdf", ["Secret."])
+
+        run_project(project)
+
+        report_files = sorted(project.reports_dir.glob("*.json"))
+        report_data = json.loads(report_files[-1].read_text())
+        assert report_data["files"][0]["file"] == "doc.pdf"
+        assert report_data["files"][0]["output_file"] == "doc_redacted.pdf"

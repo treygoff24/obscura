@@ -179,6 +179,28 @@ class TestObscuraAPI:
         assert str(txt) in result["skipped"]
         assert str(link) in result["skipped"]
 
+    def test_remove_file_deletes_input_pdf(self, tmp_dir):
+        project = create_project(tmp_dir, "Test")
+        _add_pdf(project, "doc.pdf", ["Secret."])
+        api = ObscuraAPI(project_root=tmp_dir, config_dir=tmp_dir)
+
+        result = json.loads(api.remove_file("Test", "doc.pdf"))
+
+        assert result["status"] == "ok"
+        assert result["removed"] == "doc.pdf"
+        assert not (project.input_dir / "doc.pdf").exists()
+
+    def test_remove_file_rejects_bad_names_and_missing_files(self, tmp_dir):
+        create_project(tmp_dir, "Test")
+        api = ObscuraAPI(project_root=tmp_dir, config_dir=tmp_dir)
+
+        for bad_name in ["", "../escape.pdf", "nested/doc.pdf", "/etc/passwd"]:
+            result = json.loads(api.remove_file("Test", bad_name))
+            assert "error" in result
+
+        missing = json.loads(api.remove_file("Test", "missing.pdf"))
+        assert "error" in missing
+
     def test_update_project_settings(self, tmp_dir):
         create_project(tmp_dir, "Test")
         api = ObscuraAPI(project_root=tmp_dir, config_dir=tmp_dir)
@@ -232,7 +254,7 @@ class TestObscuraAPI:
 
     def test_open_and_reveal_valid_file(self, tmp_dir, monkeypatch):
         project = create_project(tmp_dir, "Test")
-        output_path = project.output_dir / "doc.pdf"
+        output_path = project.output_dir / "doc_redacted.pdf"
         _create_pdf(output_path)
 
         calls = []
@@ -250,9 +272,9 @@ class TestObscuraAPI:
         api.reveal_in_finder("Test", "doc.pdf")
 
         assert calls[0][:2] == ["open", "--"]
-        assert calls[0][2].endswith("doc.pdf")
+        assert calls[0][2].endswith("doc_redacted.pdf")
         assert calls[1][:3] == ["open", "-R", "--"]
-        assert calls[1][3].endswith("doc.pdf")
+        assert calls[1][3].endswith("doc_redacted.pdf")
 
     def test_resolve_project_rejects_traversal(self, tmp_dir):
         api = ObscuraAPI(project_root=tmp_dir, config_dir=tmp_dir)

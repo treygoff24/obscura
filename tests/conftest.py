@@ -76,6 +76,7 @@ window.pywebview = { api: {
         ]
     })),
     add_files: (name, paths) => Promise.resolve(JSON.stringify({status: "ok", added: ["new.pdf"], skipped: []})),
+    remove_file: (name, filename) => Promise.resolve(JSON.stringify({status: "ok", removed: filename})),
     update_project_settings: (name, lang, thresh) => Promise.resolve(JSON.stringify({
         status: "ok", language: lang || "eng", confidence_threshold: thresh || 70
     })),

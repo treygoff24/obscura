@@ -622,10 +622,13 @@
         el.fileCount.textContent = files.length + " file" + (files.length !== 1 ? "s" : "");
         el.fileList.innerHTML = "";
         files.forEach(function (f) {
+            var rowWrap = document.createElement("div");
+            rowWrap.className = "file-row-wrap";
+            rowWrap.setAttribute("role", "listitem");
+
             var row = document.createElement("button");
             row.className = "file-row";
             row.type = "button";
-            row.setAttribute("role", "listitem");
             row.setAttribute("aria-label", f.file + ", status: " + statusLabel(f.status));
             var pill = '<span class="status-pill ' + esc(statusClass(f.status)) + '">' +
                        esc(statusLabel(f.status)) + "</span>";
@@ -641,8 +644,37 @@
                 var reportEntry = findReportEntry(f.file);
                 openFileReport(reportEntry || f);
             });
-            el.fileList.appendChild(row);
+
+            var removeBtn = document.createElement("button");
+            removeBtn.className = "file-remove-btn";
+            removeBtn.type = "button";
+            removeBtn.setAttribute("aria-label", "Remove " + f.file);
+            removeBtn.textContent = "Remove";
+            removeBtn.addEventListener("click", function (event) {
+                event.stopPropagation();
+                removeInputFile(f.file);
+            });
+
+            rowWrap.appendChild(row);
+            rowWrap.appendChild(removeBtn);
+            el.fileList.appendChild(rowWrap);
         });
+    }
+
+    async function removeInputFile(filename) {
+        if (!currentProject) return;
+        try {
+            var result = await window.pywebview.api.remove_file(currentProject, filename);
+            var data = JSON.parse(result || "{}");
+            if (data.error) {
+                showToast("Failed to remove file: " + data.error, "error");
+                return;
+            }
+            showToast("Removed " + filename + ".", "success");
+            await loadFiles();
+        } catch (_) {
+            showToast("Failed to remove file.", "error");
+        }
     }
 
     function findReportEntry(filename) {

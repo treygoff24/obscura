@@ -8,6 +8,8 @@ Screens: Welcome -> Project List -> Workspace (stepper: Keywords/Files/Run) -> R
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from tests.conftest import FIRE_EVENT_JS, build_mock_js
 
@@ -251,6 +253,47 @@ def test_file_list_renders_with_status(ui_page):
     pills = ui_page.locator(".file-row .status-pill")
     assert pills.count() >= 2
     assert rows.nth(0).evaluate("el => el.tagName") == "BUTTON"
+
+
+def test_files_step_scrolls_with_many_files(ui_server, page):
+    """Files step should scroll when file list exceeds viewport height."""
+    files = [
+        {"file": f"file-{idx:03}.pdf", "status": "not_run", "redactions_applied": 0}
+        for idx in range(1, 121)
+    ]
+    mock = build_mock_js(
+        list_files='() => Promise.resolve(JSON.stringify({files: ' + json.dumps(files) + "}))",
+        fire_event=False,
+    )
+    page.add_init_script(mock)
+    page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
+    page.evaluate(FIRE_EVENT_JS)
+    page.wait_for_selector(".project-card", timeout=3000)
+
+    page.locator(".project-card").first.click()
+    page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    page.click("[data-step='files']")
+    page.wait_for_selector("#step-files.active", timeout=3000)
+
+    metrics = page.evaluate("""
+        () => {
+            const panel = document.getElementById('step-files');
+            const before = panel.scrollTop;
+            panel.scrollTop = panel.scrollHeight;
+            return {
+                overflowY: getComputedStyle(panel).overflowY,
+                canOverflow: panel.scrollHeight > panel.clientHeight,
+                didScroll: panel.scrollTop > before,
+            };
+        }
+    """)
+    assert metrics["overflowY"] in ("auto", "scroll")
+    assert metrics["canOverflow"] is True
+    assert metrics["didScroll"] is True
 
 
 def test_run_button_disables_during_run(ui_page):
@@ -739,6 +782,70 @@ def test_add_files_error_toast(ui_server, page):
     toast = page.locator(".toast.toast-error")
     toast.wait_for(state="visible", timeout=5000)
     assert "Failed to add files" in toast.text_content()
+
+
+def test_remove_file_updates_list(ui_server, page):
+    """Removing a file calls API and refreshes the list."""
+    mock = build_mock_js(fire_event=False) + """
+    window._files = [
+        {file: "contract.pdf", status: "not_run", redactions_applied: 0},
+        {file: "memo.pdf", status: "not_run", redactions_applied: 0}
+    ];
+    window._removeCalls = [];
+    window.pywebview.api.list_files = () => Promise.resolve(JSON.stringify({files: window._files}));
+    window.pywebview.api.remove_file = (_name, filename) => {
+        window._removeCalls.push(filename);
+        window._files = window._files.filter(f => f.file !== filename);
+        return Promise.resolve(JSON.stringify({status: "ok", removed: filename}));
+    };
+    """
+    page.add_init_script(mock)
+    page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
+    page.evaluate(FIRE_EVENT_JS)
+    page.wait_for_selector(".project-card", timeout=3000)
+    page.locator(".project-card").first.click()
+    page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    page.click("[data-step='files']")
+    page.wait_for_selector("#step-files.active", timeout=3000)
+
+    page.locator(".file-row").first.wait_for(state="visible", timeout=3000)
+    assert page.locator(".file-row").count() == 2
+
+    page.locator('.file-remove-btn[aria-label="Remove contract.pdf"]').click()
+
+    page.wait_for_function("window._removeCalls.length === 1", timeout=3000)
+    page.wait_for_function("document.querySelectorAll('.file-row').length === 1", timeout=3000)
+    assert page.evaluate("window._removeCalls[0]") == "contract.pdf"
+    assert "contract.pdf" not in page.locator("#file-list").text_content()
+
+
+def test_remove_file_error_toast(ui_server, page):
+    """Remove file failures surface via error toast."""
+    mock = build_mock_js(
+        remove_file='() => Promise.reject(new Error("remove failed"))',
+        fire_event=False,
+    )
+    page.add_init_script(mock)
+    page.goto(ui_server + "/index.html", wait_until="domcontentloaded")
+    page.evaluate("""
+        document.getElementById('screen-welcome').classList.remove('active');
+        document.getElementById('screen-projects').classList.add('active');
+    """)
+    page.evaluate(FIRE_EVENT_JS)
+    page.wait_for_selector(".project-card", timeout=3000)
+    page.locator(".project-card").first.click()
+    page.wait_for_selector("#screen-workspace.active", timeout=3000)
+    page.click("[data-step='files']")
+    page.wait_for_selector("#step-files.active", timeout=3000)
+
+    page.locator(".file-remove-btn").first.click()
+    toast = page.locator(".toast.toast-error")
+    toast.wait_for(state="visible", timeout=5000)
+    assert "Failed to remove file" in toast.text_content()
 
 
 def test_no_files_empty_state(ui_server, page):

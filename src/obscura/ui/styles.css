@@ -359,6 +359,13 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* === Screen 3: Workspace === */
 
+#screen-workspace > main {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
 /* Stepper Navigation */
 
 .stepper {
@@ -420,6 +427,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .step-panel {
     display: none;
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
 }
 
@@ -576,6 +584,12 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
     margin-bottom: 8px;
 }
 
+.file-row-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .file-count {
     font-size: 12px;
     color: var(--text-tertiary);
@@ -585,10 +599,10 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
     display: flex;
     align-items: center;
     gap: 10px;
+    flex: 1;
     padding: 10px 14px;
     border-radius: var(--radius-sm);
     cursor: pointer;
-    width: 100%;
     text-align: left;
     background: transparent;
     border: none;
@@ -610,6 +624,23 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
     font-size: 11px;
     color: var(--text-tertiary);
     flex-shrink: 0;
+}
+
+.file-remove-btn {
+    background: transparent;
+    color: var(--text-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 7px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.file-remove-btn:hover:not(:disabled) {
+    color: var(--red);
+    border-color: var(--red-border);
+    background: var(--red-bg);
 }
 
 /* Run / Progress */

@@ -38,7 +38,7 @@ class TestCliSubprocess:
         )
 
         assert result.returncode == 0
-        assert (project.output_dir / "doc.pdf").exists()
+        assert (project.output_dir / "doc_redacted.pdf").exists()
         assert "Processed 1 file(s)." in result.stdout
 
     def test_run_then_report(self, tmp_dir):
