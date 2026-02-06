@@ -355,19 +355,19 @@ class TestOcrRedactPass:
 
 class TestSplitFusedToken:
     def test_superscript_prefix(self):
-        assert _split_fused_token("\u00b3Elephant") == ["Elephant"]
+        assert _split_fused_token("\u00b3zztokenalpha") == ["zztokenalpha"]
 
     def test_multiple_separators(self):
-        assert _split_fused_token("Island\u00b4\u00b2a") == ["Island", "a"]
+        assert _split_fused_token("zztokenbeta\u00b4\u00b2a") == ["zztokenbeta", "a"]
 
     def test_pilcrow_possessive(self):
-        assert _split_fused_token("[REDACTED_KEYWORD]\u00b6s") == ["[REDACTED_KEYWORD]", "s"]
+        assert _split_fused_token("zztokengamma\u00b6s") == ["zztokengamma", "s"]
 
     def test_preserves_comma_numbers(self):
-        assert _split_fused_token("[REDACTED_KEYWORD]") == ["[REDACTED_KEYWORD]"]
+        assert _split_fused_token("$9,876,543") == ["9,876,543"]
 
     def test_preserves_decimal_numbers(self):
-        assert _split_fused_token("1,000.00") == ["1,000.00"]
+        assert _split_fused_token("9,876.54") == ["9,876.54"]
 
     def test_preserves_accented_word(self):
         assert _split_fused_token("José") == ["José"]
@@ -392,37 +392,37 @@ class TestFusedTokenRedaction:
     def test_redact_fused_superscript_token(self, tmp_dir):
         doc = fitz.open()
         page = doc.new_page()
-        page.insert_text((72, 72), "\u00b3[REDACTED_KEYWORD] is beautiful")
+        page.insert_text((72, 72), "\u00b3zztokenalpha zztokenbeta is beautiful")
         pdf_path = tmp_dir / "fused.pdf"
         doc.save(str(pdf_path))
         doc.close()
 
         output_path = tmp_dir / "redacted.pdf"
-        keywords = _make_keywords(tmp_dir, ["elephant"])
+        keywords = _make_keywords(tmp_dir, ["zztokenalpha"])
         result = redact_pdf(pdf_path, output_path, keywords)
 
         out_doc = fitz.open(str(output_path))
         text = out_doc[0].get_text().lower()
         out_doc.close()
-        assert "elephant" not in text
+        assert "zztokenalpha" not in text
         assert result.redaction_count > 0
 
     def test_redact_fused_mid_token(self, tmp_dir):
         doc = fitz.open()
         page = doc.new_page()
-        page.insert_text((72, 72), "[REDACTED_KEYWORD]\u00b2the next word")
+        page.insert_text((72, 72), "zztokendelta\u00b2the next word")
         pdf_path = tmp_dir / "fused2.pdf"
         doc.save(str(pdf_path))
         doc.close()
 
         output_path = tmp_dir / "redacted.pdf"
-        keywords = _make_keywords(tmp_dir, ["[REDACTED_KEYWORD]"])
+        keywords = _make_keywords(tmp_dir, ["zztokendelta"])
         result = redact_pdf(pdf_path, output_path, keywords)
 
         out_doc = fitz.open(str(output_path))
         text = out_doc[0].get_text().lower()
         out_doc.close()
-        assert "[REDACTED_KEYWORD]" not in text
+        assert "zztokendelta" not in text
 
     def test_redact_accented_keyword(self, tmp_dir):
         doc = fitz.open()

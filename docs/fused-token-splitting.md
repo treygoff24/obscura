@@ -11,16 +11,16 @@ Examples of fused tokens extracted from real legal PDFs:
 
 | Raw token from PyMuPDF | Expected words | After NFKC | Why `\b` fails |
 |---|---|---|---|
-| `³Elephant` | `Elephant` | `3Elephant` | `3` and `E` are both `\w` — no boundary |
-| `Island´²a` | `Island`, `a` | `Island ́2a` | `2` and `a` are both `\w` — no boundary |
-| `[REDACTED_KEYWORD]²the` | `[REDACTED_KEYWORD]`, `the` | `[REDACTED_KEYWORD]2the` | `a` and `2` are both `\w` — no boundary |
-| `[REDACTED_KEYWORD]¶s` | `[REDACTED_KEYWORD]` | `[REDACTED_KEYWORD]¶s` | `¶` is NOT `\w`, so `\b` works here — but only by luck |
+| `³zztokenalpha` | `zztokenalpha` | `3zztokenalpha` | `3` and `E` are both `\w` — no boundary |
+| `zztokenbeta´²a` | `zztokenbeta`, `a` | `zztokenbeta ́2a` | `2` and `a` are both `\w` — no boundary |
+| `zztokendelta²the` | `zztokendelta`, `the` | `zztokendelta2the` | `a` and `2` are both `\w` — no boundary |
+| `zztokengamma¶s` | `zztokengamma` | `zztokengamma¶s` | `¶` is NOT `\w`, so `\b` works here — but only by luck |
 
 The root cause: NFKC normalization converts superscript digits (`³` → `3`,
 `²` → `2`) into regular ASCII digits. These are `\w` characters, so
 `regex`'s `\b` word boundary does not fire between them and adjacent
-letters. Keywords like `elephant`, `[REDACTED_KEYWORD]`, or `island` fail to match
-because the pattern `\belephant\b` requires word boundaries on both sides.
+letters. Keywords like `zztokenalpha`, `zztokendelta`, or `zztokenbeta` fail to match
+because the pattern `\bzztokenalpha\b` requires word boundaries on both sides.
 
 This was discovered and fixed in a production legal redaction pipeline
 processing 20 PDFs. The fused tokens caused missed redactions of names,
@@ -48,10 +48,10 @@ get_text("words") → split fused tokens → normalize each sub-token → group 
 ### Secondary (optional): Substring matching for compound tokens
 
 After the primary fix, a second issue remains: keywords embedded inside
-compound tokens like email usernames (`kwame[REDACTED_KEYWORD]@gmail.com` contains
-`kwame` and `[REDACTED_KEYWORD]`). The primary fix splits this into
-`['kwame[REDACTED_KEYWORD]', 'gmail', 'com']`, but `kwame[REDACTED_KEYWORD]` is a single
-alphanumeric string — the keyword `kwame` won't match via `\b` because
+compound tokens like email usernames (`zztokenepsilonzztokendelta@gmail.com` contains
+`zztokenepsilon` and `zztokendelta`). The primary fix splits this into
+`['zztokenepsilonzztokendelta', 'gmail', 'com']`, but `zztokenepsilonzztokendelta` is a single
+alphanumeric string — the keyword `zztokenepsilon` won't match via `\b` because
 there's no word boundary inside it.
 
 This affects `_search_keywords_on_page()` in `src/obscura/redact.py`
@@ -63,7 +63,7 @@ This affects `_search_keywords_on_page()` in `src/obscura/redact.py`
 
 Split each raw word from `get_text("words")` on non-ASCII-alphanumeric
 characters, preserving commas and periods (so dollar amounts like
-`[REDACTED_KEYWORD].00` stay as single tokens).
+`$9,876,543.00` stay as single tokens).
 
 ```python
 import re
@@ -73,16 +73,16 @@ _FUSED_TOKEN_SPLIT = re.compile(r'[^a-zA-Z0-9,.]+')
 def _split_fused_token(text: str) -> list[str]:
     """Split a PDF-extracted word on non-alphanumeric boundaries.
 
-    Preserves commas and periods so number tokens like '[REDACTED_KEYWORD].00'
+    Preserves commas and periods so number tokens like '9,876,543.21'
     stay intact. Uses ASCII-only character class (not \\W) because
     NFKC-normalized Unicode digits would not be split by \\W.
 
     Examples:
-        '³Elephant'  -> ['Elephant']
-        'Island´²a'  -> ['Island', 'a']
-        '[REDACTED_KEYWORD]²the' -> ['[REDACTED_KEYWORD]', 'the']
-        '[REDACTED_KEYWORD]¶s'  -> ['[REDACTED_KEYWORD]', 's']
-        '[REDACTED_KEYWORD]' -> ['[REDACTED_KEYWORD]']   (comma preserved)
+        '³zztokenalpha'  -> ['zztokenalpha']
+        'zztokenbeta´²a'  -> ['zztokenbeta', 'a']
+        'zztokendelta²the' -> ['zztokendelta', 'the']
+        'zztokengamma¶s'  -> ['zztokengamma', 's']
+        '$9,876,543' -> ['9,876,543']   (comma preserved)
         'hello'      -> ['hello']        (no split needed)
     """
     parts = _FUSED_TOKEN_SPLIT.split(text)
@@ -128,15 +128,15 @@ def _extract_line_words(
     # ... rest of line-joining logic unchanged ...
 ```
 
-This means `³[REDACTED_KEYWORD]´²a` (3 raw tokens) expands to
-`['elephant', 'island', 'a']` (3 normalized entries) in the line. The
-line text becomes `"[REDACTED_KEYWORD] a"` and the pattern
-`\b[REDACTED_KEYWORD]\b` matches cleanly.
+This means `³zztokenalpha zztokenbeta´²a` (3 raw tokens) expands to
+`['zztokenalpha', 'zztokenbeta', 'a']` (3 normalized entries) in the line. The
+line text becomes `"zztokenalpha zztokenbeta a"` and the pattern
+`\bzztokenalpha zztokenbeta\b` matches cleanly.
 
 ### Step 3 (optional): Substring matching for compound tokens
 
 For keywords embedded in tokens that can't be split further (e.g.,
-`kwame[REDACTED_KEYWORD]` from an email address), add a post-match pass in
+`zztokenepsilonzztokendelta` from an email address), add a post-match pass in
 `_search_keywords_on_page()` that checks whether any plain keyword
 of length >= 4 appears as a substring of unmatched tokens.
 
@@ -169,32 +169,32 @@ purpose tool, this should be a user-facing option (e.g., a
 
 ```python
 def test_split_fused_superscript_prefix():
-    """Superscript digit fused to word start: ³Elephant -> ['Elephant']"""
-    assert _split_fused_token("³Elephant") == ["Elephant"]
+    """Superscript digit fused to word start: ³zztokenalpha -> ['zztokenalpha']"""
+    assert _split_fused_token("³zztokenalpha") == ["zztokenalpha"]
 
 def test_split_fused_multiple_separators():
-    """Multiple Unicode chars between words: Island´²a -> ['Island', 'a']"""
-    assert _split_fused_token("Island´²a") == ["Island", "a"]
+    """Multiple Unicode chars between words: zztokenbeta´²a -> ['zztokenbeta', 'a']"""
+    assert _split_fused_token("zztokenbeta´²a") == ["zztokenbeta", "a"]
 
 def test_split_fused_pilcrow_possessive():
-    """Pilcrow as possessive marker: [REDACTED_KEYWORD]¶s -> ['[REDACTED_KEYWORD]', 's']"""
-    assert _split_fused_token("[REDACTED_KEYWORD]¶s") == ["[REDACTED_KEYWORD]", "s"]
+    """Pilcrow as possessive marker: zztokengamma¶s -> ['zztokengamma', 's']"""
+    assert _split_fused_token("zztokengamma¶s") == ["zztokengamma", "s"]
 
 def test_split_preserves_comma_numbers():
-    """Commas in numbers must not split: [REDACTED_KEYWORD] -> ['[REDACTED_KEYWORD]']"""
-    assert _split_fused_token("[REDACTED_KEYWORD]") == ["[REDACTED_KEYWORD]"]
+    """Commas in numbers must not split: $9,876,543 -> ['9,876,543']"""
+    assert _split_fused_token("$9,876,543") == ["9,876,543"]
 
 def test_split_preserves_decimal_numbers():
-    """Periods in decimals must not split: 1,000.00 -> ['1,000.00']"""
-    assert _split_fused_token("1,000.00") == ["1,000.00"]
+    """Periods in decimals must not split: 9,876.54 -> ['9,876.54']"""
+    assert _split_fused_token("9,876.54") == ["9,876.54"]
 
 def test_split_plain_word_unchanged():
     """Normal words pass through: hello -> ['hello']"""
     assert _split_fused_token("hello") == ["hello"]
 
 def test_split_email():
-    """Email splits on @ and .: <kwame@gmail.com> -> ['kwame', 'gmail.com']"""
-    assert _split_fused_token("<kwame@gmail.com>") == ["kwame", "gmail.com"]
+    """Email splits on @ and .: <zztokenepsilon@gmail.com> -> ['zztokenepsilon', 'gmail.com']"""
+    assert _split_fused_token("<zztokenepsilon@gmail.com>") == ["zztokenepsilon", "gmail.com"]
 ```
 
 ### End-to-end redaction with fused tokens
@@ -205,24 +205,24 @@ tokens. Verify the keyword is redacted (text removed from content stream):
 ```python
 def test_redact_fused_superscript_token(tmp_path):
     """Keyword preceded by superscript digit in PDF is still redacted."""
-    # Create a PDF with text '³Elephant' as a single word
+    # Create a PDF with text '³zztokenalpha' as a single word
     doc = fitz.open()
     page = doc.new_page()
     # Insert text that simulates the fused token
-    page.insert_text((72, 72), "³[REDACTED_KEYWORD] is beautiful")
+    page.insert_text((72, 72), "³zztokenalpha zztokenbeta is beautiful")
     pdf_path = tmp_path / "fused.pdf"
     doc.save(str(pdf_path))
     doc.close()
 
-    keywords = KeywordSet(["[REDACTED_KEYWORD]"], [], [])
+    keywords = KeywordSet(["zztokenalpha zztokenbeta"], [], [])
     out_path = tmp_path / "redacted.pdf"
     result = redact_pdf(pdf_path, out_path, keywords)
 
     # Verify keyword is gone from output
     out_doc = fitz.open(str(out_path))
     text = out_doc[0].get_text().lower()
-    assert "elephant" not in text
-    assert "island" not in text
+    assert "zztokenalpha" not in text
+    assert "zztokenbeta" not in text
     out_doc.close()
 ```
 
@@ -233,19 +233,19 @@ def test_redact_keyword_inside_email(tmp_path):
     """Keyword embedded in email username is redacted."""
     doc = fitz.open()
     page = doc.new_page()
-    page.insert_text((72, 72), "Contact: kwame[REDACTED_KEYWORD]@gmail.com")
+    page.insert_text((72, 72), "Contact: zztokenepsilonzztokendelta@gmail.com")
     pdf_path = tmp_path / "email.pdf"
     doc.save(str(pdf_path))
     doc.close()
 
-    keywords = KeywordSet(["kwame", "[REDACTED_KEYWORD]"], [], [])
+    keywords = KeywordSet(["zztokenepsilon", "zztokendelta"], [], [])
     out_path = tmp_path / "redacted.pdf"
     result = redact_pdf(pdf_path, out_path, keywords)
 
     out_doc = fitz.open(str(out_path))
     text = out_doc[0].get_text().lower()
-    assert "kwame" not in text
-    assert "[REDACTED_KEYWORD]" not in text
+    assert "zztokenepsilon" not in text
+    assert "zztokendelta" not in text
     out_doc.close()
 ```
 
