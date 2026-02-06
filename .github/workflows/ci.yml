@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  tests:
+    name: Tests (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest pytest-cov
+
+      - name: Run non-UI test suite
+        run: python -m pytest tests/ -m "not ui"
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage.xml
+            htmlcov/
+          if-no-files-found: warn
+
+  package:
+    name: Build package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Build distribution artifacts
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+          pyproject-build --outdir dist-py
+          python -m twine check --strict dist-py/*
+
+      - name: Upload distribution artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist-py/*
+          if-no-files-found: error

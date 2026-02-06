@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.0", "setuptools-scm"]
+requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -16,7 +16,6 @@ keywords = ["pdf", "redaction", "privacy", "ocr", "legal"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Legal Industry",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
